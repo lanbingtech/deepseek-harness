@@ -563,6 +563,11 @@
   overflow: hidden;
 }
 
+/* Keep the original browser mounted while alternate navigation is selected. */
+.regionArea[hidden] {
+  display: none;
+}
+
 .collapsed .regionArea {
   margin-left: 0;
   margin-right: 0;

@@ -31,6 +31,12 @@ Use the sidebar to browse Workspaces and their Sessions, reorder them, and start
 
 History rows without a stored title use the localized unnamed label (未命名 / Untitled), rather than a directory name. The current blank row remains New Session; other blank rows remain hidden. Rename drafts use the stored title, or start empty when unnamed; unnamed rows do not offer title copying.
 
+### Browser extension scope
+
+The original browser declares the root list `sidebar.workspaces.header` for independent controls. A plugin injects `workspaceBrowserScope` and contributes a bare observable through `ctx.workspaceBrowserScope.contribute({ source, priority })`; Cordis removes it with the contributing fiber. Lower numeric priority wins, with earlier registration breaking ties. Removing the active contributor restores the next source, or unrestricted native browsing when none remains. Components consume the framework-bound `useBrowserScope` hook; the service is not passed to components.
+
+Each scope has an `id`, `revision`, and `status` (`ready`, `loading`, or `error`). Ready membership is a readonly Session-id array: `undefined` means unrestricted and `[]` means empty. Loading and error scopes show no Session rows or title matches and never issue unrestricted content searches. Scope changes cancel old searches and discard old responses. Membership filters native groups, counts, overflow and search before their display bounds. Full account membership and the complete native ordering ledger remain available; scoped drags use the original native operation on the complete account sequence, moving only the dragged row and retaining the relative order of all hidden members. Scoping never changes Session selection, creation defaults, archive state or Workspace membership.
+
 ### Reordering and view options
 
 Pinned Sessions lead ordinary Sessions in both grouped and flat views. **Last updated** sorts each partition strictly by the latest user prompt or steer time, newest first; pin time does not affect it. **Manual** uses the relative positions in one complete Session sequence, including hidden archives. Returning to Last updated discards the manual layout, and entering Manual again freezes the then-current chronological order. The browser defaults to Last updated and remembers the selected mode across reloads.

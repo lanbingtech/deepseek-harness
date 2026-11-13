@@ -184,9 +184,10 @@ export class ApiSessionList {
    * Search current visible message content without activating any matching Session.
    * @param query - literal message-content query.
    * @param signal - cancellation for list and search reads.
+   * @param sessionIds - allowed membership before ranking and bounds; omitted is unrestricted, empty returns no hits.
    * @returns authorized bounded Session search results.
    */
-  async search(query: string, signal: AbortSignal): Promise<SessionSearchValue> {
+  async search(query: string, signal: AbortSignal, sessionIds?: readonly SessionId[]): Promise<SessionSearchValue> {
     const normalizedQuery = normalizeSearchQuery(query)
     signal.throwIfAborted()
     const provider = this.ctx.get('sessionQuery')
@@ -200,8 +201,9 @@ export class ApiSessionList {
     try {
       const visible = await provider.listSessions(signal)
       signal.throwIfAborted()
+      const range = sessionIds === undefined ? undefined : new Set(sessionIds)
       const visibleIds = new Set(visible
-        .filter(record => record.header.cwd !== undefined)
+        .filter(record => record.header.cwd !== undefined && (range === undefined || range.has(record.header.id)))
         .map(record => record.header.id))
       if (visibleIds.size === 0) return { items: [], hasMore: false }
       const authorized: SessionSearchItem[] = []
@@ -222,6 +224,7 @@ export class ApiSessionList {
         try {
           page = await provider.searchSessions({
             query: normalizedQuery,
+            ...(sessionIds === undefined ? {} : { sessionFilters: [{ kind: 'id' as const, values: [...visibleIds] }] }),
             eventFilters: [
               { kind: 'type', values: ['user/message', 'assistant/message'] },
               { kind: 'surface', values: ['current'] },

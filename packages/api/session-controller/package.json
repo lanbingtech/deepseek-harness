@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-api-session-controller",
   "description": "Session Remote commands, cold reads, and live control transport",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.1-rc.2.lanbingtech.1",
   "publishConfig": {
     "access": "public"
   },
@@ -59,6 +59,8 @@
     "watch": "tsdown --watch"
   },
   "files": [
+    "FORK_SOURCE.md",
+    "LICENSE",
     "locale/*.json",
     "lib/index.js",
     "lib/client.js",

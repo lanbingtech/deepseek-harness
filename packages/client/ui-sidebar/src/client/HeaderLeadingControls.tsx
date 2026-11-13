@@ -23,7 +23,8 @@ export type HeaderLeadingControlsProps =
  * @param props - Injected sidebar actions plus the sidebar locale seat.
  * @returns the two window-chrome controls.
  */
-export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcuts, t }: HeaderLeadingControlsProps) {
+export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcuts, useNavigation, t }: HeaderLeadingControlsProps) {
+  const conversation = useNavigation(snapshot => snapshot.view === null)
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   return (
@@ -39,7 +40,7 @@ export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcut
           <IconPanelLeftOutlineRegular size={16} />
         </button>
       </Tooltip>
-      <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500}>
+      {conversation && <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500}>
         <button
           type="button"
           className={css.iconButton}
@@ -49,7 +50,7 @@ export function HeaderLeadingControls({ toggleSidebar, startSession, useShortcut
         >
           <IconNewChatOutlineRegular size={16} />
         </button>
-      </Tooltip>
+      </Tooltip>}
     </div>
   )
 }

@@ -135,3 +135,5 @@ No direct effect; model requests remain owned by the Agent and LLM packages.
 None.
 
 </details>
+
+`SessionSearchRequest.sessionIds` optionally restricts message-content search. Omission keeps the normal visible range; an empty array returns no results. The controller intersects supplied ids with visible Sessions, passes that id filter to the query provider before ranking and pagination, and enforces membership before its result bound.

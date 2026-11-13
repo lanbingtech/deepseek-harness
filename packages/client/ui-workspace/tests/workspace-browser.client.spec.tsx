@@ -136,6 +136,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    useBrowserScope: selector => selector(undefined),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
     t,
@@ -2653,5 +2654,178 @@ describe('Workspace tree grouping', () => {
     fireEvent.dragEnd(alpha)
     expect(b.props.insertWorkspaceBefore).toHaveBeenCalledOnce()
     expect(b.props.insertWorkspaceBefore).toHaveBeenCalledWith(wid('alpha'), wid('gamma'))
+  })
+})
+
+
+describe('native browser membership projection', () => {
+  const scope = (ids: readonly string[]) => hook({ id: 'scope', revision: ids.join(','), status: 'ready' as const, memberSessionIds: ids.map(sid) })
+
+  it('hides foreign selected blanks and restores the full native list after scope disposal', () => {
+    const b = mount({
+      useSessions: hook(sessionState([summary('visible', 1), summary('foreign', 2, { blank: true })], { main: sid('foreign') })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['visible', 'foreign'])])),
+      useBrowserScope: scope(['visible']),
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    expect(screen.getByText('visible')).toBeTruthy()
+    expect(screen.queryByText(t('session.new'))).toBeNull()
+    rerender(b, { useBrowserScope: scope([]) })
+    expect(screen.queryByText('visible')).toBeNull()
+    rerender(b, { useBrowserScope: selector => selector(undefined) })
+    expect(screen.getByText('visible')).toBeTruthy()
+  })
+
+  it.each(['workspace', 'flat'] as const)('merges %s scoped drops without losing hidden pinned, fork, or ordinary members', (mode) => {
+    const ids = ['pin-a', 'pin-hidden', 'pin-b', 'child-hidden', 'parent-hidden', 'one', 'hidden', 'two']
+    const sessions = ids.map((id, index) => summary(id, 100 - index, id === 'child-hidden' ? { parentId: sid('parent-hidden') } : {}))
+    const b = mount({
+      useSessions: hook(sessionState(sessions)),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ids)], [], ['pin-a', 'pin-hidden', 'pin-b'].map(sid))),
+      useBrowserScope: scope(['pin-a', 'pin-b', 'one', 'two']),
+    })
+    act(() => {
+      b.store.actions.setGroupBy(mode)
+      b.store.actions.setGroupExpanded('alpha', true)
+      b.store.actions.setSessionOrder(mode === 'flat' ? FLAT_SESSION_ORDER_KEY : 'alpha', ids, {})
+    })
+    const dropBefore = (source: string, target: string) => {
+      const from = screen.getByText(source).closest('[role="treeitem"]') as HTMLElement
+      const to = screen.getByText(target).closest('[role="treeitem"]') as HTMLElement
+      to.getBoundingClientRect = () => ({
+        top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+      })
+      fireEvent.dragStart(from, { dataTransfer: dragData() })
+      fireDrag(to, 'dragOver', 105)
+      fireDrag(to, 'drop', 105)
+      fireEvent.dragEnd(from)
+    }
+    dropBefore('pin-b', 'pin-a')
+    dropBefore('two', 'one')
+    const account = mode === 'flat' ? FLAT_SESSION_ORDER_KEY : 'alpha'
+    expect(b.store.getSnapshot().sessionOrderByAccount[account]).toEqual(['pin-b', 'pin-a', 'pin-hidden', 'child-hidden', 'parent-hidden', 'two', 'one', 'hidden'])
+    rerender(b, { useBrowserScope: selector => selector(undefined) })
+    expect(screen.getByText('pin-hidden')).toBeTruthy()
+    expect(b.store.getSnapshot().sessionOrderByAccount[account]).toHaveLength(ids.length)
+  })
+})
+
+
+describe('native scoped search lifecycle', () => {
+  it('never searches unresolved scopes and aborts superseded scoped content results', async () => {
+    vi.useFakeTimers()
+    try {
+      const calls: {
+        signal: AbortSignal
+        ids: readonly SessionId[] | undefined
+        resolve(value: { items: { sessionId: SessionId; snippet: string }[]; hasMore: boolean }): void
+      }[] = []
+      const searchSessions: WorkspaceBrowserProps['searchSessions'] = (_query, signal, ids) => new Promise((resolve) => {
+        calls.push({ signal, ids, resolve })
+      })
+      const state = sessionState([summary('one', 2), summary('two', 1)])
+      const b = mount({
+        useSessions: hook(state),
+        useBrowserScope: hook({ id: 'one', revision: 0, status: 'loading' as const }),
+        searchSessions,
+      })
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'needle' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(calls).toHaveLength(0)
+      expect(screen.getByRole('status').textContent).toBe(t('scope.loading'))
+      rerender(b, { useBrowserScope: hook({ id: 'one', revision: 1, status: 'ready' as const, memberSessionIds: [sid('one')] }) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(calls[0]?.ids).toEqual([sid('one')])
+      rerender(b, { useBrowserScope: hook({ id: 'two', revision: 1, status: 'ready' as const, memberSessionIds: [sid('two')] }) })
+      expect(calls[0]?.signal.aborted).toBe(true)
+      await act(async () => { calls[0]!.resolve({ items: [{ sessionId: sid('one'), snippet: 'stale match' }], hasMore: false }); await vi.advanceTimersByTimeAsync(250) })
+      expect(calls[1]?.ids).toEqual([sid('two')])
+      expect(screen.queryByText('stale match')).toBeNull()
+      await act(async () => { calls[1]!.resolve({ items: [{ sessionId: sid('two'), snippet: 'fresh match' }], hasMore: false }) })
+      expect(screen.getByText('fresh match')).toBeTruthy()
+      rerender(b, { useBrowserScope: hook({ id: 'two', revision: 2, status: 'error' as const, message: 'membership unavailable' }) })
+      expect(calls[1]?.signal.aborted).toBe(true)
+      expect(screen.getByRole('alert').textContent).toContain('membership unavailable')
+      expect(screen.queryByText('fresh match')).toBeNull()
+      rerender(b, { useBrowserScope: selector => selector(undefined) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(calls[2]?.ids).toBeUndefined()
+      b.view.unmount()
+      expect(calls[2]?.signal.aborted).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+})
+
+
+describe('native scoped title search', () => {
+  it('filters local title matches before the native result bound', async () => {
+    vi.useFakeTimers()
+    try {
+      const foreign = Array.from({ length: 25 }, (_, index) => summary(`needle-foreign-${index}`, 100 - index))
+      const b = mount({
+        useSessions: hook(sessionState([...foreign, summary('needle-member', 1)])),
+        useBrowserScope: hook({ id: 'member', revision: 1, status: 'ready' as const, memberSessionIds: [sid('needle-member')] }),
+      })
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: 'needle' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(250) })
+      expect(screen.getByText('needle-member')).toBeTruthy()
+      for (const session of foreign) expect(screen.queryByText(session.displayTitle)).toBeNull()
+      expect(b.props.searchSessions).toHaveBeenCalledWith('needle', expect.any(AbortSignal), [sid('needle-member')])
+    } finally { vi.useRealTimers() }
+  })
+})
+
+
+describe('native scoped workspace ancestry', () => {
+  it('retains a hidden directory parent when guarding workspace-tree drag boundaries', () => {
+    const insertWorkspaceBefore = vi.fn(async () => {})
+    const b = mount({
+      useSessions: hook(sessionState([summary('foreign', 3), summary('child-member', 2), summary('outside-member', 1)])),
+      useWorkspaces: hook(workspaceState([
+        { ...workspace('hidden-parent', ['foreign']), path: '/projects/parent' },
+        { ...workspace('visible-child', ['child-member']), path: '/projects/parent/child' },
+        { ...workspace('outside', ['outside-member']), path: '/outside' },
+      ])),
+      useBrowserScope: hook({ id: 'member', revision: 1, status: 'ready' as const, memberSessionIds: [sid('child-member'), sid('outside-member')] }),
+      insertWorkspaceBefore,
+    })
+    act(() => b.store.actions.setGroupBy('workspace-tree'))
+    expect(screen.queryByText('hidden-parent')).toBeNull()
+    const child = screen.getByText('visible-child').closest('[role="treeitem"]') as HTMLElement
+    const outside = screen.getByText('outside').closest('[role="treeitem"]') as HTMLElement
+    fireEvent.dragStart(child, { dataTransfer: dragData() })
+    fireDrag(outside.parentElement as HTMLElement, 'dragOver', 100)
+    fireDrag(outside.parentElement as HTMLElement, 'drop', 100)
+    fireEvent.dragEnd(child)
+    expect(insertWorkspaceBefore).not.toHaveBeenCalled()
+  })
+})
+
+
+describe('native complete scoped drag ledger', () => {
+  it.each(['workspace', 'flat'] as const)('retains the relative order of hidden archives and foreign members in %s mode', (mode) => {
+    const ids = ['one', 'foreign-one', 'archive', 'foreign-two', 'two']
+    const b = mount({
+      useSessions: hook(sessionState(ids.map((id, index) => summary(id, 100 - index)))),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ids)], [sid('archive')])),
+      useBrowserScope: hook({ id: 'scope', revision: 1, status: 'ready' as const, memberSessionIds: ['one', 'archive', 'two'].map(sid) }),
+    })
+    const account = mode === 'flat' ? FLAT_SESSION_ORDER_KEY : 'alpha'
+    act(() => {
+      b.store.actions.setGroupBy(mode)
+      b.store.actions.setGroupExpanded('alpha', true)
+      b.store.actions.setSessionOrder(account, ids, {})
+    })
+    const from = screen.getByText('two').closest('[role="treeitem"]') as HTMLElement
+    const to = screen.getByText('one').closest('[role="treeitem"]') as HTMLElement
+    to.getBoundingClientRect = () => ({
+      top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(from, { dataTransfer: dragData() })
+    fireDrag(to, 'dragOver', 105)
+    fireDrag(to, 'drop', 105)
+    const order = b.store.getSnapshot().sessionOrderByAccount[account]!
+    expect(order).toEqual(['two', 'one', 'foreign-one', 'archive', 'foreign-two'])
+    expect(order.filter(id => !['one', 'two'].includes(id))).toEqual(['foreign-one', 'archive', 'foreign-two'])
   })
 })

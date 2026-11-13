@@ -39,10 +39,11 @@ afterEach(() => {
  */
 function mountColumn(): { column: HTMLElement; quiet: () => boolean } {
   const view = render(
-    <SidebarRoot
+    <SidebarRoot useHeaderControls={selector => selector(false)}
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
-      usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useShortcuts={selector => selector([])}
+      usePanelInfo={usePanelInfo} selectPanel={() => {}} useNavigation={selector => selector({ view: null })}
+      usePanels={selector => selector([])} useShortcuts={selector => selector([])}
       useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
       startSession={vi.fn()} toggleSidebar={vi.fn()} t={t}

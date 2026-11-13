@@ -44,6 +44,7 @@ import {
   type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
 } from './contract/slots.ts'
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
+import { WorkspaceBrowserScopeService } from './browser-scope.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
@@ -58,6 +59,7 @@ import { SessionIdMenuItem } from './session-actions/SessionId.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
+export type { WorkspaceBrowserScope, WorkspaceBrowserScopeContribution, WorkspaceBrowserScopeSnapshot } from './browser-scope.ts'
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
@@ -115,6 +117,7 @@ export function apply(ctx: Context): void {
   // One viewing-store instance, created here as ui-layout does for its layout
   // store: the browser declares the handle, and the UiWorkspace service writes
   // view order through the same instance the renderer hands the browser.
+  const browserScope = new WorkspaceBrowserScopeService(ctx)
   const viewHandle = createWorkspaceViewStore()
   const viewInstance = viewHandle.create()
   const viewStore: typeof viewHandle = { ...viewHandle, create: () => viewInstance }
@@ -135,8 +138,8 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
   const shortcutControls = createWorkspaceShortcutControls()
 
-  const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
-    const result = await sessions.search(query, signal)
+  const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal, sessionIds) => {
+    const result = await (sessionIds === undefined ? sessions.search(query, signal) : sessions.search(query, signal, sessionIds))
     if (!result.ok) throw new Error(result.error.message)
     return result.value
   }
@@ -281,7 +284,10 @@ export function apply(ctx: Context): void {
     requestAddWorkspace: shortcutControls.add,
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
-    hooks: { directoryFlow: browserFlowSource, hostInfo, workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
+    hooks: {
+      browserScope: browserScope.state, directoryFlow: browserFlowSource, hostInfo,
+      workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog,
+    },
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
@@ -293,6 +299,7 @@ export function apply(ctx: Context): void {
     {
       name: 'sidebar.workspaces',
       children: {
+        'sidebar.workspaces.header': { kind: 'list', scope: 'root' },
         'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
         // Every row entry reads the menu's open state through a hook bound
         // from the row's render occurrence (the owner passes the state pair

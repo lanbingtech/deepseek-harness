@@ -12,12 +12,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SidebarPanelMetadata, SidebarRootInjected } from './contract/slots.ts'
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
+import { SidebarNavigation } from './navigation.ts'
+export type { ISidebarNavigation, SidebarNavigationState } from './navigation.ts'
 import { SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
 
 export type {
   SidebarBrandMarkOwnerProps, SidebarBrandNameOwnerProps, SidebarFooterActionOwnerProps,
-  SidebarPanelIconOwnerProps, SidebarPanelMetadata,
+  SidebarHeaderControlOwnerProps, SidebarPanelIconOwnerProps, SidebarPanelMetadata,
   SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
 } from './contract/slots.ts'
 export type { SidebarKey } from './locales.ts'
@@ -45,6 +47,13 @@ export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts']
 export function apply(ctx: ClientContext): void {
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
+  const navigation = new SidebarNavigation(view => ctx.slots.entriesOfSlot('sidebar.navigation.view').some(entry => entry.options.key === view))
+  ctx.effect(() => ctx.reflect.provide('sidebarNavigation', navigation), 'ui-sidebar: navigation service')
+  ctx.effect(() => ctx.slots.subscribe('sidebar.navigation.view', () => { navigation.retain() }), 'ui-sidebar: navigation lifecycle')
+  const headerControls = createSnapshotStore(false)
+  ctx.effect(() => ctx.slots.subscribe('sidebar.header.control', () => {
+    headerControls.set(ctx.slots.entriesOfSlot('sidebar.header.control').length > 0)
+  }), 'ui-sidebar: header controls')
   const panels = createSnapshotStore<readonly SidebarPanelMetadata[]>([])
   const syncPanels = (): void => {
     const next = ctx.slots.entriesOfSlot('sidebar.panellist').map(({ options }) => {
@@ -71,7 +80,7 @@ export function apply(ctx: ClientContext): void {
       if (id === 'plugins' || id === 'schedules') ctx.get('productAnalytics')?.track('sidebar_menu_click', { menu_name: id === 'plugins' ? 'plugin' : 'cron' })
       ctx.layout.selectPanel(id)
     },
-    hooks: { panels, shortcuts: ctx.shortcuts.catalog },
+    hooks: { headerControls, navigation: navigation.state, panels, shortcuts: ctx.shortcuts.catalog },
   })
   ctx.slots.inject('sidebar', () => ctx.slots.register({
     name: 'sidebar',
@@ -81,6 +90,8 @@ export function apply(ctx: ClientContext): void {
       'sidebar.brand.name': { kind: 'single', scope: 'root' },
       'sidebar.toggle.badge': { kind: 'single', scope: 'root' },
       'sidebar.panellist': { kind: 'list', scope: 'root' },
+      'sidebar.header.control': { kind: 'list', scope: 'root' },
+      'sidebar.navigation.view': { kind: 'keyed', scope: 'root' },
       'sidebar.workspaces': { kind: 'single', scope: 'root' },
       'sidebar.settings': { kind: 'single', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },

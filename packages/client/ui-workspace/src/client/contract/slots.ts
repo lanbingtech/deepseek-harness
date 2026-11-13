@@ -38,6 +38,7 @@
  * session-scoped seat would force a Session binding, which would activate and
  * retain every listed Session.
  */
+import type { WorkspaceBrowserScopeSnapshot } from '../browser-scope.ts'
 import type {
   HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
 } from '@deepseek-ai/dsh-client-ui-slots'
@@ -115,6 +116,8 @@ export interface SessionRowScheduleOwnerProps {
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
+    /** Independent controls in the original browser header. */
+    'sidebar.workspaces.header': { kind: 'list'; scope: 'root'; owner: object }
     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
@@ -219,6 +222,8 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
  */
 export type WorkspaceBrowserInjected = {
   hooks: DirectoryPickingInjected['hooks'] & {
+    /** Active projection; undefined preserves unrestricted native behavior. */
+    browserScope: HostObservable<WorkspaceBrowserScopeSnapshot | undefined>
     /**
      * Fixed Host facts, reached through a hook rather than injected as values:
      * the renderer memoizes an entry's inject result for the registration's
@@ -247,11 +252,13 @@ export type WorkspaceBrowserInjected = {
   open: (sessionId: SessionId) => void
   /**
    * Search current visible conversation messages. The Host fixes the result
-   * bound; `hasMore` means the query needs narrowing.
+   * bound; `hasMore` means the query needs narrowing. Optional Session ids restrict
+   * membership before that bound; omission is unrestricted and empty searches nothing.
    */
   searchSessions: (
     query: string,
     signal: AbortSignal,
+    sessionIds?: readonly SessionId[],
   ) => Promise<{ items: readonly SessionSearchResultItem[]; hasMore: boolean }>
   /** Maximum number of merged rows rendered for one search. */
   searchResultLimit: number
@@ -468,6 +475,7 @@ export type RowToastProps =
 export type WorkspaceBrowserProps =
   PropsRuntime<'sidebar.workspaces'>
   & PropsRenderSlots<
+    | 'sidebar.workspaces.header'
     | 'sidebar.workspaces.directoryFlow'
     | 'sidebar.workspaces.session.menu.item'
     | 'sidebar.workspaces.session.row.action'

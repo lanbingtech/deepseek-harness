@@ -896,3 +896,30 @@ describe('session.search', () => {
     expect(failed.error.message).toContain('database unavailable')
   })
 })
+
+
+describe('session.search allowed range', () => {
+  it('passes membership to the provider before its bound and distinguishes empty from unrestricted', async () => {
+    const ctx = await baseContext()
+    const headers = Array.from({ length: 30 }, (_, index) => header(`foreign-${index}`))
+    headers.push(header('member'))
+    ctx.provide('sessionPersistence', testSessionPersistence(ctx, { list: async () => headers }) as never)
+    const search = vi.fn(async (value: SessionSearchRequest) => {
+      const range = value.sessionFilters?.find(filter => filter.kind === 'id')
+      const ids = range?.kind === 'id' ? range.values : headers.map(item => item.id)
+      return { items: ids.slice(0, value.limit).map(id => hit(id)) }
+    })
+    installSearchQuery(ctx, search)
+    const remote = createSessionTestRemote(ctx, defaults)
+    const signal = new AbortController().signal
+    const scoped = await remote.search({ query: 'match', sessionIds: [sid('member')] }, signal)
+    expect(scoped).toMatchObject({ ok: true, value: { items: [{ sessionId: 'member' }], hasMore: false } })
+    expect(search.mock.calls[0]?.[0].sessionFilters).toEqual([{ kind: 'id', values: [sid('member')] }])
+    search.mockClear()
+    expect(await remote.search({ query: 'match', sessionIds: [] }, signal)).toEqual({ ok: true, value: { items: [], hasMore: false } })
+    expect(search).not.toHaveBeenCalled()
+    await remote.search({ query: 'match' }, signal)
+    expect(search.mock.calls[0]?.[0].sessionFilters).toBeUndefined()
+    await ctx.fiber.dispose()
+  })
+})

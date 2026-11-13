@@ -156,3 +156,31 @@ describe('ui-sidebar apply', () => {
     expect(b.slots.entries('main')).toHaveLength(0)
   })
 })
+
+
+it('keeps view availability in the standard slot ledger across plugin reloads', async () => {
+  const b = await bench()
+  const sidebar = b.ctx.plugin({ inject: [...inject], apply })
+  await sidebar.await()
+  const extension = {
+    inject: ['slots'],
+    apply(ctx: Context) {
+      ctx.slots.inject('sidebar.navigation.view', () => ctx.slots.register({ name: 'sidebar.navigation.view', key: 'extension' }, () => null))
+    },
+  }
+  expect(b.slots.spec('sidebar.header.control')).toEqual({ kind: 'list', scope: 'root' })
+  expect(b.slots.spec('sidebar.navigation.view')).toEqual({ kind: 'keyed', scope: 'root' })
+  const first = b.ctx.plugin(extension)
+  await first.await()
+  b.ctx.get('sidebarNavigation')!.select('extension')
+  expect(b.ctx.get('sidebarNavigation')!.state.getSnapshot()).toEqual({ view: 'extension' })
+  await first.dispose()
+  await vi.waitFor(() => { expect(b.ctx.get('sidebarNavigation')!.state.getSnapshot()).toEqual({ view: null }) })
+  expect(() => b.ctx.get('sidebarNavigation')!.select('extension')).toThrow('extension')
+  const second = b.ctx.plugin(extension)
+  await second.await()
+  expect(b.ctx.get('sidebarNavigation')!.state.getSnapshot()).toEqual({ view: null })
+  b.ctx.get('sidebarNavigation')!.select('extension')
+  await second.dispose()
+  await sidebar.dispose()
+})

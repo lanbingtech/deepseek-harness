@@ -115,11 +115,13 @@ export interface ISessions {
    * request-local; the list snapshot remains the metadata authority.
    * @param query - non-blank literal phrase.
    * @param signal - cancellation for a superseded search.
+   * @param sessionIds - optional allowed range; omission is unrestricted and empty returns no hits.
    * @returns bounded results, or a business/transport error.
    */
   search(
     query: string,
     signal: AbortSignal,
+    sessionIds?: readonly SessionId[],
   ): Promise<RemoteResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>>
   /**
    * Fork a session from an exact inclusive prefix of the source; on

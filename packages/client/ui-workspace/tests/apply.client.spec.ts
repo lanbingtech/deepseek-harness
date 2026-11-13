@@ -821,6 +821,10 @@ describe('ui-workspace apply', () => {
       hasMore: false,
     })
     expect(b.search).toHaveBeenCalledWith('match', signal)
+    await browser.searchSessions('scoped', signal, [sid('session')])
+    expect(b.search).toHaveBeenLastCalledWith('scoped', signal, [sid('session')])
+    expect(browser.hooks.browserScope.getSnapshot()).toBeUndefined()
+    expect(b.slots.spec('sidebar.workspaces.header')).toMatchObject({ kind: 'list', scope: 'root' })
     expect(browser.searchResultLimit).toBe(20)
     await browser.renameWorkspace('ws' as never, 'renamed')
     expect(b.rename).toHaveBeenCalledWith('ws', 'renamed')

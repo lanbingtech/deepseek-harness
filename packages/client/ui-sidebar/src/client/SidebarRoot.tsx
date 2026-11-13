@@ -92,11 +92,16 @@ export function SidebarRoot({
   toggleSidebar,
   selectPanel,
   usePanels,
+  useNavigation,
+  useHeaderControls,
   useShortcuts,
   usePanelInfo,
   t,
   renderSlot,
 }: SidebarRootComponentProps) {
+  const hasHeaderControls = useHeaderControls(snapshot => snapshot)
+  const view = useNavigation(snapshot => snapshot.view)
+  const conversation = view === null
   const panels = usePanels(snapshot => snapshot)
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
@@ -238,7 +243,7 @@ export function SidebarRoot({
               </span>
             </span>
           )
-          return darwinDesktop
+          return darwinDesktop || !conversation
             ? <span className={clsx(css.brand, css.wide)}>{identity}</span>
             : (
               <button
@@ -255,8 +260,10 @@ export function SidebarRoot({
         {!darwinDesktop && toggle}
       </div>
 
+      {hasHeaderControls && renderSlot('sidebar.header.control', { activeView: view, wide, expandSidebar: () => { if (collapsed) toggleSidebar() } })}
+
       {/* The label fades before the hover/focus shortcut, including on translucent backgrounds. */}
-      <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
+      {conversation && <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
         <button
           type="button"
           className={css.newSession}
@@ -274,9 +281,9 @@ export function SidebarRoot({
             <ShortcutKeys keys={newShortcut.keys} />
           </span>}
         </button>
-      </Tooltip>
+      </Tooltip>}
 
-      {panels.length > 0 && (
+      {conversation && panels.length > 0 && (
         <nav className={css.panelList} aria-label={t('panels.label')}>
           {panels.map(({ id, label }) => (
             <PanelRow
@@ -294,12 +301,16 @@ export function SidebarRoot({
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}
-      <div className={css.regionArea}>
+      <div className={css.regionArea} hidden={!conversation} {...(conversation ? {} : { inert: '' })}>
         {renderSlot('sidebar.workspaces', {
           wide,
           expandSidebar: () => { if (collapsed) toggleSidebar() },
         })}
       </div>
+
+      {view !== null && <div className={css.regionArea}>
+        {renderSlot('sidebar.navigation.view', { wide, expandSidebar: () => { if (collapsed) toggleSidebar() } }, { entryKey: view })}
+      </div>}
 
       {/* Footer actions stack above Settings in both sidebar widths. */}
       <div className={css.footArea}>

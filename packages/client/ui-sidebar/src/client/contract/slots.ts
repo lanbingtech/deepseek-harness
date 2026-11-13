@@ -33,6 +33,10 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the sidebar owns the button and resolves its label from list metadata.
      */
     'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }
+    /** Additive controls below the native brand row, in expanded and rail layouts. */
+    'sidebar.header.control': { kind: 'list'; scope: 'root'; owner: SidebarHeaderControlOwnerProps }
+    /** Alternate navigation views, selected through ctx.sidebarNavigation. */
+    'sidebar.navigation.view': { kind: 'keyed'; scope: 'root'; owner: SidebarSectionOwnerProps }
     /**
      * The workspace/session browsing region: section header, search, the
      * grouped/flat session list, and every workspace dialog. Declared by this
@@ -84,6 +88,12 @@ export interface SidebarPanelMetadata {
   label: string
 }
 
+/** Native header geometry and active navigation selection. */
+export interface SidebarHeaderControlOwnerProps extends SidebarSectionOwnerProps {
+  /** Null selects the original conversation browser; other values are live slot keys. */
+  readonly activeView: string | null
+}
+
 /**
  * Owner share of the browser hole — the only facts crossing the shell/region
  * boundary. Business data and actions arrive through the region's own inject.
@@ -126,7 +136,7 @@ export type SidebarRootInjected = {
   /** Select the global panel addressed by a sidebar row. */
   selectPanel: (id: MainPanelId) => void
   /** Private reactive sources bound to framework selector hooks. */
-  hooks: { panels: ObservableSnapshot<readonly SidebarPanelMetadata[]>; shortcuts: ObservableSnapshot<readonly ShortcutCatalogEntry[]> }
+  hooks: { headerControls: ObservableSnapshot<boolean>; navigation: ObservableSnapshot<import('../navigation.ts').SidebarNavigationState>; panels: ObservableSnapshot<readonly SidebarPanelMetadata[]>; shortcuts: ObservableSnapshot<readonly ShortcutCatalogEntry[]> }
 }
 
 /**
@@ -141,6 +151,8 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.name'
     | 'sidebar.toggle.badge'
     | 'sidebar.panellist'
+    | 'sidebar.header.control'
+    | 'sidebar.navigation.view'
     | 'sidebar.workspaces'
     | 'sidebar.settings'
     | 'sidebar.footer.action'

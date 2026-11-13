@@ -4,6 +4,8 @@ kind: "package-reference"
 ---
 # Session Controller
 
+`SessionSearchRequest.sessionIds` 可限制消息内容搜索范围。省略时保留原生可见范围，空数组返回空结果。控制器先与可见会话取交集，在排序和分页之前向查询提供器传入会话 ID 过滤条件，并在自身结果数量限制之前再次校验成员关系。
+
 [English](README.md) | 中文
 
 桌面埋点遵循[产品采集策略](../../client/product-analytics/README.zh.md)及其启动时开关，不包含 Web 使用情况。

@@ -13,6 +13,8 @@ Desktop product events use the optional [product analytics service](../product-a
 
 The dsh web client sidebar lets users recognize the active build, start a new session, collapse navigation to a 56px rail, browse Workspaces and Sessions, and open Settings. It preserves a bottom-pinned Settings entry and hides idle scrollbars without moving browser rows. New Session uses an explicitly selected Workspace, then the current Session's Workspace, then the most recently active Workspace; if none exists, it opens a blank New Session page. Deployments can replace the brand mark or name while retaining the navigation controls and rail geometry.
 
+The Lanbingtech native-navigation build also declares the standard `sidebar.header.control` list below the brand and the keyed `sidebar.navigation.view` seat. The injected `sidebarNavigation` service selects a live view key, with `null` selecting conversation navigation; removing the selected contribution restores that default. Header owners receive `wide`, `expandSidebar` and `activeView`. Alternate views hide and inert the original browsing seat at the shell while keeping it mounted. With no contributions, the original layout remains unchanged.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)

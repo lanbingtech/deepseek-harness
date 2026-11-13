@@ -114,3 +114,34 @@ describe('sidebar shell snapshots', () => {
     }
   })
 })
+
+
+it('preserves the original browser through alternate navigation and contribution removal', async () => {
+  const { runtime } = await bench({ locale: 'en' })
+  const browser = runtime.slots.register({ name: 'sidebar.workspaces' }, () => <input aria-label="Browser state" defaultValue="draft" />)
+  const alternate = runtime.slots.register({ name: 'sidebar.navigation.view', key: 'extension' }, () => <div>Alternate navigation</div>)
+  const header = runtime.slots.register({ name: 'sidebar.header.control', id: 'extension' }, () => <button>View switch</button>)
+  const slot = runtime.renderSlot('sidebar', { collapsed: false, width: 300 })
+  try {
+    const input = slot.view.getByRole('textbox') as HTMLInputElement
+    input.value = 'retained state'
+    await waitFor(() => { expect(slot.view.getByRole('button', { name: 'View switch' })).toBeTruthy() })
+    act(() => { runtime.ctx.sidebarNavigation.select('extension') })
+    expect(slot.view.getByText('Alternate navigation')).toBeTruthy()
+    expect(slot.view.queryByRole('textbox')).toBeNull()
+    expect(input.closest('[hidden]')?.hasAttribute('inert')).toBe(true)
+    expect(slot.view.queryByRole('button', { name: 'New session' })).toBeNull()
+    act(() => { alternate() })
+    await waitFor(() => { expect(runtime.ctx.sidebarNavigation.state.getSnapshot()).toEqual({ view: null }) })
+    expect(slot.view.getByRole('textbox')).toBe(input)
+    expect(input.value).toBe('retained state')
+    expect(() => runtime.ctx.sidebarNavigation.select('extension')).toThrow('extension')
+    act(() => { header() })
+    await waitFor(() => { expect(slot.view.queryByRole('button', { name: 'View switch' })).toBeNull() })
+  } finally {
+    browser()
+    alternate()
+    header()
+    await runtime.dispose()
+  }
+})

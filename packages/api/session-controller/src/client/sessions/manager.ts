@@ -481,13 +481,15 @@ export class SessionManager {
    * state to the list snapshot.
    * @param query - non-blank literal phrase.
    * @param signal - cancellation for superseded UI queries.
+   * @param sessionIds - optional allowed range; omission is unrestricted and empty returns no hits.
    * @returns the Host result or a folded transport error.
    */
   async search(
     query: string,
     signal: AbortSignal,
+    sessionIds?: readonly SessionId[],
   ): Promise<RemoteResult<{ items: SessionSearchResultItem[]; hasMore: boolean }>> {
-    const result = await this.remote.session.search({ query }, signal)
+    const result = await this.remote.session.search({ query, ...(sessionIds === undefined ? {} : { sessionIds }) }, signal)
     if (!result.ok) return result
     return {
       ok: true,

@@ -276,6 +276,8 @@ export interface SessionListValue {
 /** Session search request. */
 export interface SessionSearchRequest {
   readonly query: string
+  /** Optional allowed range, enforced before the Host result bound; empty searches nothing. */
+  readonly sessionIds?: readonly SessionId[]
 }
 
 /** Session search response value. */

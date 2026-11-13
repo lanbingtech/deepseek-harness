@@ -288,7 +288,7 @@ export class SessionController extends TypertRemoteService {
    */
   @Remote('search')
   async search(request: SessionSearchRequest, signal: AbortSignal): Promise<SessionSearchValue> {
-    const result = await this.listState.search(request.query, signal)
+    const result = await this.listState.search(request.query, signal, request.sessionIds)
     return { ...result, items: result.items.filter(item => this.ctx.remoteAccess.allows({ kind: 'session', id: item.sessionId })) }
   }
 

@@ -5,6 +5,10 @@ kind: "package-reference"
 
 # @deepseek-ai/dsh-client-ui-workspace
 
+浏览器扩展通过原生 `sidebar.workspaces.header` 根列表添加独立控件，通过 `ctx.workspaceBrowserScope.contribute({ source, priority })` 提交只读范围。Cordis 在提交插件卸载时移除贡献；优先级数值小者生效，同优先级采用先注册者。当前贡献移除后恢复下一来源，没有贡献时保持原生完整浏览行为。组件使用框架绑定的 `useBrowserScope`，不接收服务对象。
+
+范围快照包含 `id`、`revision` 和 `status`（`ready`、`loading` 或 `error`）。就绪范围的只读 `memberSessionIds` 中，`undefined` 表示不限范围，`[]` 表示空范围。加载中或失败时不显示会话行或标题匹配，也不发出不限范围的内容搜索。范围切换取消旧搜索并忽略旧响应。范围在分组、计数、溢出和搜索限制之前过滤原生数据；完整成员关系和原生排序序列继续保留，范围内拖动在完整账户序列上执行原生移动，仅移动拖动行，并保留所有隐藏成员的相对顺序。范围不改变会话选择、新建默认值、归档状态或工作区成员关系。
+
 [English](README.md) | 中文
 
 桌面端产品事件使用可选的[产品埋点服务](../product-analytics/README.zh.md)，不包含普通 Web 交互。
