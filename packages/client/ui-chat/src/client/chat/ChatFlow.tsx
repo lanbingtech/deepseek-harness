@@ -10,7 +10,7 @@ import { RunningStatus } from './RunningStatus.tsx'
 
 /** Render the flow without adding a DOM parent or changing keyed row positions. */
 export const ChatFlow = memo(function ChatFlow({
-  entries, pendingInputs, lastInputTurn, deferCollapse,
+  entries, pendingInputs, lastInputTurn, deferCollapse, mode, hideUserMessages,
   useSession, useChat, useChatNode, useChatNodeBottom, useChatNodeProcess, useChatGroup, usePresentation,
   useStore, actions, renderSlot, renderFactorySlot, t, useGroupAction, useGroupHeaderAction,
   cwd, openFile, inspectCall, forkAt, loadImage, fileMentions,
@@ -27,7 +27,7 @@ export const ChatFlow = memo(function ChatFlow({
   const seatProps = {
     nodeStore, useChatNode, useChatNodeBottom, useChatNodeProcess, usePresentation,
     useStore, actions, renderSlot, t, useGroupAction, deferCollapse,
-    cwd, openFile, inspectCall, forkAt, loadImage, fileMentions,
+    cwd, openFile, inspectCall, forkAt, loadImage, fileMentions, mode, hideUserMessages,
   }
   const rows = entries.map((entry) => {
     switch (entry.kind) {
@@ -41,7 +41,7 @@ export const ChatFlow = memo(function ChatFlow({
         return assertNever(entry)
     }
   })
-  const pendingRows = pendingInputs.map(item => 'requestId' in item ? (
+  const pendingRows = (hideUserMessages ? [] : pendingInputs).map(item => 'requestId' in item ? (
     <PendingSubmissionBubble key={item.requestId} submission={item}
       loadImage={loadImage} renderFactorySlot={renderFactorySlot} t={t} />
   ) : (

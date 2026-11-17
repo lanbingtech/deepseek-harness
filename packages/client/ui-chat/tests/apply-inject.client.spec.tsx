@@ -111,8 +111,9 @@ async function bench(initialSettings?: ChatSettings, withBrowserRegistry = true,
 
   const chatViewApi = (reference: SessionReference) => {
     const id = reference.sessionId
-    const entry = runtime.slots.entries('conversation.view')[0]!
-    const instance = runtime.storeOf('conversation.view', reference) as ChatInstance
+    runtime.ctx.uiConversation.binding(reference.binding).activate('chat')
+    const entry = runtime.factoryOf('conversation.chat.content')
+    const instance = createChatStore().create(reference.sessionId)
     const injected = (entry.inject as unknown as (
       sessionId: SessionId,
       actions: ChatActions,
@@ -121,9 +122,8 @@ async function bench(initialSettings?: ChatSettings, withBrowserRegistry = true,
   }
   const chatFlowApi = (reference: SessionReference) => {
     const entry = runtime.slots.entries('conversation.chat.flow')[0]!
-    const instance = runtime.storeOf('conversation.chat.flow', reference) as ChatInstance
     const injectFlow = entry.inject as (sessionId: SessionId) => ChatFlowDataInjected
-    return { instance, injected: injectFlow(reference.sessionId) }
+    return { injected: injectFlow(reference.sessionId) }
   }
   return {
     get linkPreference() {
@@ -419,7 +419,7 @@ describe('Chat inject API', () => {
 
   it('fails loud when a Chat View inject resolves no Session', async () => {
     const b = await bench()
-    const entry = b.runtime.slots.entries('conversation.view')[0]!
+    const entry = b.runtime.factoryOf('conversation.chat.content')
     const injectView = entry.inject as unknown as (
       sessionId: SessionId,
       actions: ChatActions,
@@ -438,7 +438,6 @@ describe('Chat inject API', () => {
     const owner = {} as never
 
     const flow = b.chatFlowApi(b.rootReference)
-    expect(flow.instance).toBe(b.chatViewApi(b.rootReference).instance)
     expect(flow.injected.keyedHooks.chatNode('missing')).toBe(injected.keyedHooks.chatNode('missing'))
     expect(flow.injected.keyedHooks.chatNodeProcess('missing')).toBe(injected.keyedHooks.chatNodeProcess('missing'))
     expect(flow.injected.keyedHooks.chatNodeBottom('missing')).toBe(injected.keyedHooks.chatNodeBottom('missing'))

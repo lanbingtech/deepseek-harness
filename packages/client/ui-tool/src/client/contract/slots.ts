@@ -57,6 +57,8 @@ export interface ToolImagesOwnerProps {
 
 /** Standard owner currency supplied to every atomic Tool view. */
 export interface ToolCallCommonProps {
+  /** Display policy inherited from this Chat occurrence; readonly omits answer-panel actions. */
+  readonly mode?: 'interactive' | 'readonly' | undefined
   /** Stable Hook; each invocation owns its open state and subscribes to enclosing-Turn resets. */
   useDisclosure: UseDisclosure
   /** Call identity, stable across all stages. */

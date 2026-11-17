@@ -18,8 +18,8 @@ function callName(call: ToolCallPhaseProps): string {
 
 /** One atomic call dispatched through the Tool-owned keyed slot. */
 const ToolCall = memo(function ToolCall({
-  renderSlot, callId, toolName, call, openFile, cwd, home, inspectCall, loadImage, useDisclosure, t, children,
-}: Pick<ToolTreeProps, 'renderSlot' | 'openFile' | 'cwd' | 'inspectCall' | 'loadImage' | 'useDisclosure' | 't'> & {
+  renderSlot, callId, toolName, call, openFile, cwd, home, inspectCall, loadImage, useDisclosure, t, mode, children,
+}: Pick<ToolTreeProps, 'renderSlot' | 'openFile' | 'cwd' | 'inspectCall' | 'loadImage' | 'useDisclosure' | 't' | 'mode'> & {
   callId: string
   toolName: string
   call: ToolCallPhaseProps
@@ -27,6 +27,7 @@ const ToolCall = memo(function ToolCall({
   children?: ReactNode
 }) {
   const owner: ToolCallOwnerProps = useMemo(() => ({
+    mode,
     callId,
     toolName,
     ...call,
@@ -36,7 +37,7 @@ const ToolCall = memo(function ToolCall({
     loadImage,
     useDisclosure,
     inspect: inspectCall === undefined ? undefined : () => { inspectCall(callId) },
-  }), [callId, toolName, call, openFile, cwd, home, loadImage, inspectCall, useDisclosure])
+  }), [mode, callId, toolName, call, openFile, cwd, home, loadImage, inspectCall, useDisclosure])
   const autoReviewDenied = useMemo(
     () => call.phase === 'result' && toolRowModel(toolName, call.block).autoReviewDenial !== null,
     [toolName, call],
@@ -59,14 +60,15 @@ const ToolCall = memo(function ToolCall({
 })
 
 const ToolCallBranch = memo(function ToolCallBranch({
-  renderSlot, block, cwd, home, openFile, inspectCall, loadImage, useDisclosure, t,
-}: Pick<ToolTreeProps, 'renderSlot' | 'cwd' | 'openFile' | 'inspectCall' | 'loadImage' | 'useDisclosure' | 't'> & {
+  renderSlot, block, cwd, home, openFile, inspectCall, loadImage, useDisclosure, t, mode,
+}: Pick<ToolTreeProps, 'renderSlot' | 'cwd' | 'openFile' | 'inspectCall' | 'loadImage' | 'useDisclosure' | 't' | 'mode'> & {
   block: ToolCallBlock
   home?: string | undefined
 }) {
   const call = useMemo(() => toolCallPhase(block), [block])
   return (
     <ToolCall
+      mode={mode}
       renderSlot={renderSlot}
       callId={call.block.callId}
       toolName={callName(call)}
@@ -84,6 +86,7 @@ const ToolCallBranch = memo(function ToolCallBranch({
           {call.block.subCalls.map(child => (
             <ToolCallBranch
               key={child.callId}
+              mode={mode}
               renderSlot={renderSlot}
               block={child}
               cwd={cwd}
@@ -108,11 +111,12 @@ const ToolCallBranch = memo(function ToolCallBranch({
  * @returns the Tool call tree.
  */
 export function ToolCallTree({
-  renderSlot, node, cwd, openFile, inspectCall, loadImage, useDisclosure, useHostInfo, t,
+  renderSlot, node, cwd, openFile, inspectCall, loadImage, useDisclosure, useHostInfo, t, mode,
 }: ToolTreeProps) {
   const home = useHostInfo(info => info.home)
   return (
     <ToolCallBranch
+      mode={mode}
       renderSlot={renderSlot}
       block={node.data.root}
       cwd={cwd}

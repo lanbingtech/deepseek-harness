@@ -684,3 +684,18 @@ describe('AskQuestionRow', () => {
     expect(injectedFace(() => undefined).reviewPanel('c1', { questions: [], answers: [] })).toBe(false)
   })
 })
+
+
+it('readonly question rows keep transcript inspection and omit composer answer and review actions', () => {
+  const revealPanel = vi.fn(() => true)
+  const reviewPanel = vi.fn(() => true)
+  const props = rowProps(resultNode(READABLE_ARGS, PENDING_RESULT), { answerable: ['c1'], revealPanel, reviewPanel })
+  const view = render(<AskQuestionRow {...props} mode="readonly" />)
+  expect(view.queryByRole('button', { name: t('ask.reopen') })).toBeNull()
+  expect(view.queryByRole('button', { name: t('ask.review') })).toBeNull()
+  expect(view.getByText(t('ask.pending'))).toBeTruthy()
+  fireEvent.click(view.getByText(t('ask.pending')))
+  expect(view.getByText('What do you want to accomplish?')).toBeTruthy()
+  expect(revealPanel).not.toHaveBeenCalled()
+  expect(reviewPanel).not.toHaveBeenCalled()
+})

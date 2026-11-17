@@ -202,3 +202,19 @@ describe('ToolCallTree', () => {
     expect(view.getByText('Auto review 已拒绝')).toBeTruthy()
   })
 })
+
+
+it('keeps readonly nested tool inspection and forwards policy independently to every call', () => {
+  const owners: ToolCallOwnerProps[] = []
+  const block = { ...root('parent', { name: 'custom_parent', argsRaw: '{}' }),
+    subCalls: [root('child', { name: 'custom_child', argsRaw: '{}' })] }
+  const initial = props(block, undefined, owners)
+  const view = render(<ToolCallTree {...initial} mode="readonly" />)
+  expect(owners.map(owner => [owner.callId, owner.mode])).toEqual([['parent', 'readonly'], ['child', 'readonly']])
+  expect(view.container.querySelectorAll('[data-chat-call-id]')).toHaveLength(2)
+  owners[1]?.inspect?.()
+  expect(initial.inspectCall).toHaveBeenCalledWith('child')
+  owners.length = 0
+  view.rerender(<ToolCallTree {...initial} />)
+  expect(owners.every(owner => owner.mode === undefined)).toBe(true)
+})

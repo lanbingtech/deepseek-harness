@@ -11,7 +11,7 @@ import {
   Button, IconChevronDownOutlineRegular, MarkdownDelegateProvider, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { isAtOrOutside } from '../contract/group-tree.ts'
-import type { ChatFlowHookContext, ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
+import type { ChatContentProps, ChatFlowHookContext, ChatViewSlotProps, OpenFileOptions } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { TurnNavigator } from './TurnNavigator.tsx'
 import { mergeTurnRailItems } from './turn-rail-items.ts'
@@ -60,8 +60,8 @@ const MOTION_TAIL_MS = 800
 export function ChatView({
   useSession, useChat, useConversation, useSessions, renderSlot,
   sessionId, openFile, openExternalLink, loadOlder, loadThrough, loadImage, inspectCall, chatScroll, forkAt, fileMentions,
-  usePresentation, useProjection, t,
-}: ChatViewSlotProps) {
+  usePresentation, useProjection, t, mode, hideUserMessages, useStore, actions, scrollMemory, hookContext,
+}: ChatViewSlotProps | ChatContentProps) {
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)
   const entries = useMemo<readonly RenderEntry[]>(() => groupedEntries
@@ -77,8 +77,11 @@ export function ChatView({
   // conversation snapshot never carries projection values).
   const turnOutline = useProjection('turnOutline')
   const railItems = useMemo(
-    () => mergeTurnRailItems(turnNavigationItems, turnOutline),
-    [turnNavigationItems, turnOutline],
+    () => {
+      const items = mergeTurnRailItems(turnNavigationItems, turnOutline)
+      return hideUserMessages ? items.map(item => ({ ...item, prompt: '' })) : items
+    },
+    [turnNavigationItems, turnOutline, hideUserMessages],
   )
   const inbox = useProjection('inbox') as InboxState | undefined
   // Workspace root off the session list row: path summaries display relative to it.
@@ -185,14 +188,18 @@ export function ChatView({
     ? latestSteering.source.rpcId : latestSteering?.id ?? null
   const scroll = useChatScroll({
     ready: openState === 'open',
-    order, firstSeq, lastKey, running, loadingOlder, hasMore, chatScroll, loadOlder, loadThrough, deferCompletedTurns,
+    order, firstSeq, lastKey, running, loadingOlder, hasMore,
+    chatScroll: scrollMemory ?? chatScroll, loadOlder, loadThrough, deferCompletedTurns,
     lastIsUser: lastKey !== null && nodeStore.get(lastKey)?.kind === 'user',
     steeringId,
     submissionId: visibleSubmissions.at(-1)?.requestId ?? null,
     loadedTurns: turnNavigationItems,
     transcriptView,
   })
-  const flowContext = useMemo<ChatFlowHookContext>(() => ({ motion: scroll.motion }), [scroll.motion])
+  const flowContext = useMemo<ChatFlowHookContext>(
+    () => ({ motion: scroll.motion, useStore: hookContext?.useStore ?? useStore }),
+    [scroll.motion, hookContext?.useStore, useStore],
+  )
 
   return (
     <div className={css.frame}>
@@ -225,7 +232,7 @@ export function ChatView({
             )}
             <MarkdownDelegateProvider openFile={requestOpenFile} openExternalLink={openExternalLink} fileImages={fileImages}>
               {renderSlot('conversation.chat.flow', {
-                entries, pendingInputs, lastInputTurn, deferCollapse,
+                entries, pendingInputs, lastInputTurn, deferCollapse, mode, hideUserMessages, actions: hookContext?.actions ?? actions,
                 cwd, openFile: requestOpenFile, inspectCall, forkAt, loadImage, fileMentions,
               }, { hookContext: flowContext })}
             </MarkdownDelegateProvider>

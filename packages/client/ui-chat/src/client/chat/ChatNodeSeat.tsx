@@ -47,7 +47,7 @@ function turnOf(node: ChatNode | undefined): number | undefined {
  * only seats whose visibility actually changes.
  */
 export const ChatNodeSeat = memo(function ChatNodeSeat({
-  nodeKey, groupPart, useChatNode, useChatNodeProcess, usePresentation,
+  nodeKey, groupPart, mode, hideUserMessages, useChatNode, useChatNodeProcess, usePresentation,
   cwd, openFile, inspectCall, forkAt,
   loadImage, fileMentions, useStore, actions, renderSlot, t, useChatNodeBottom, deferCollapse, useGroupAction,
 }: ChatNodeSeatProps) {
@@ -127,6 +127,8 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
     : {
       ...groupPart === undefined ? {} : { groupPart },
       cwd,
+      mode,
+      hideUserMessages,
       openFile,
       inspectCall,
       forkAt,
@@ -134,10 +136,11 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
       fileMentions,
       turnProcess,
     }, [
-    node, groupPart, cwd, openFile, inspectCall, forkAt,
+    node, groupPart, mode, hideUserMessages, cwd, openFile, inspectCall, forkAt,
     loadImage, fileMentions, turnProcess,
   ])
-  if (routedNode === undefined || owner === null) return null
+  if (routedNode === undefined || owner === null
+    || (hideUserMessages && (routedNode.kind === 'user' || routedNode.kind === 'steering'))) return null
   // Runtime dispatch owns the correlation: every Node's discriminant is the
   // keyed-slot entry passed alongside that same Node. TypeScript does not
   // distribute an object containing a union into a union of objects itself.

@@ -9,11 +9,12 @@ import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { $nodesOfType } from 'lexical'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import type { DraftSnapshot } from '../src/client/contract/draft-editor.ts'
-import type { InputTriggerController } from '../src/client/contract/input.ts'
+import type { InputState, InputTriggerController } from '../src/client/contract/input.ts'
 import { ReferenceChipNode } from '../src/client/input/editor/chip-node.tsx'
 import { TextRefNode } from '../src/client/input/editor/text-ref.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
 import { InputHub } from '../src/client/input/hub.ts'
+import { lazyInput } from '../src/client/input/lazy-input.ts'
 import { zh } from '../src/client/locales.ts'
 
 const mention = '@src/main.ts'
@@ -307,4 +308,52 @@ it('unsubscribes the lexicon and refuses the old binding after Session disposal'
   expect(b.shell.draftSnapshot).toBe(draft)
   expect(b.shell.requestDraftInitialization({ prompt: 'late edit', clearPreviousDraft: true })).toBe('blocked')
   expect(() => b.hub.requestDraftInitialization(b.binding, { prompt: 'late edit' })).toThrow('retained Session binding')
+})
+
+
+it('binds transcript input seats without constructing an editor or restoring a saved draft until input is consumed', async () => {
+  const b = await storedSession(saved)
+  const shellFor = vi.spyOn(b.hub, 'shellFor')
+  const input = lazyInput(() => b.hub.shellFor(b.binding))
+  expect(shellFor).not.toHaveBeenCalled()
+  expect(localStorage.getItem(b.key)).toBe(b.raw)
+  const initial = input.state.getSnapshot()
+  expect(shellFor).toHaveBeenCalledTimes(1)
+  expect(input.state.getSnapshot()).toBe(initial)
+  const shell = b.hub.shellFor(b.binding)
+  expect(shell.draftSnapshot.text).toBe(saved.text)
+  const listener = vi.fn()
+  const stop = input.state.subscribe(listener)
+  input.actions.setDraft('interactive draft')
+  expect(listener).toHaveBeenCalled()
+  expect(shell.state.getSnapshot()).toBe(input.state.getSnapshot())
+  stop()
+})
+
+it('lazily delegates every input action through the existing resident shell', () => {
+  const state = { getSnapshot: vi.fn<() => InputState>(), subscribe: vi.fn(() => () => {}) }
+  const actions = {
+    captureInsertion: vi.fn(() => ({ start: 0, end: 0, draftRev: 0 })),
+    insertText: vi.fn(() => true), setDraft: vi.fn(), persistDraft: vi.fn(),
+    addAttachments: vi.fn(() => true), removeAttachment: vi.fn(), pruneAttachments: vi.fn(), submit: vi.fn(),
+  }
+  const resolve = vi.fn(() => ({ state, actions }))
+  const input = lazyInput(resolve)
+  expect(resolve).not.toHaveBeenCalled()
+  const span = input.actions.captureInsertion()
+  expect(input.actions.insertText('text', span)).toBe(true)
+  input.actions.setDraft('draft')
+  input.actions.persistDraft()
+  expect(input.actions.addAttachments([])).toBe(true)
+  input.actions.removeAttachment('attachment' as never)
+  input.actions.pruneAttachments([])
+  input.actions.submit()
+  expect(resolve).toHaveBeenCalledTimes(8)
+  expect(actions.insertText).toHaveBeenCalledWith('text', span)
+  expect(actions.setDraft).toHaveBeenCalledWith('draft')
+  expect(actions.persistDraft).toHaveBeenCalledOnce()
+  expect(actions.addAttachments).toHaveBeenCalledWith([])
+  expect(actions.removeAttachment).toHaveBeenCalledWith('attachment')
+  expect(actions.pruneAttachments).toHaveBeenCalledWith([])
+  expect(actions.submit).toHaveBeenCalledOnce()
 })

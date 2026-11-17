@@ -26,7 +26,7 @@ function lastContent(snapshot: ChatSnapshot, turn: number, skipWarning: boolean)
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, t, useAccess, useChat, usePerformanceUsage,
+  node, openFile, forkAt, renderSlot, t, mode, useAccess, useChat, usePerformanceUsage,
 }: TurnTailNodeViewProps) {
   const detailed = usePerformanceUsage(mode => mode) === 'detailed'
   const forkAllowed = useAccess('session/fork')
@@ -46,12 +46,12 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   if (turn === undefined) return null
   const closing = data.closing
   const owner: TurnTailOwnerProps = { turn, seq: closing?.finalNode.seq ?? data.seq, openFile }
-  const tail = renderSlot('conversation.chat.turnTail', owner)
+  const tail = mode === 'readonly' ? null : renderSlot('conversation.chat.turnTail', owner)
   if (closing === null) return tail === null ? null : <div className={css.root} data-turn-tail={data.turn}>{tail}</div>
   // Interruption-frozen partials carry no messageId, so they address no
   // durable message and contribute no per-message actions.
   const messageId = closing.finalNode.messageId
-  const assistantActions = messageId === undefined
+  const assistantActions = mode === 'readonly' || messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
   return (
@@ -67,7 +67,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         clock="end"
         // The branch action owns boundary resolution: it sends the real
         // turn/end seq it already has, and the Host cuts exactly there.
-        onBranch={forkAllowed ? () => { forkAt(data.seq) } : undefined}
+        onBranch={mode !== 'readonly' && forkAllowed ? () => { forkAt(data.seq) } : undefined}
         branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
         extraActions={assistantActions}

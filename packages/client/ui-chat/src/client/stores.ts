@@ -1,4 +1,4 @@
-/** Per-Session Chat view store. */
+/** Chat process disclosure state. */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-store'
 import type { ChatStoreState, TurnProcessViewEntry } from './contract/store.ts'
 import type { TurnProcessSpec } from './contract/turn-process.ts'
@@ -45,7 +45,7 @@ export function turnProcessOpen(
 
 /**
  * Create the Chat view store handle.
- * @returns a handle instantiated once per rendered Session scope.
+ * @returns a handle instantiated by the owning entry or Factory occurrence.
  */
 export function createChatStore(): EngineStoreHandle<ChatStoreState, ChatActions> {
   return defineStore({

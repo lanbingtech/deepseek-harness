@@ -287,6 +287,7 @@ function HarnessChatFlow({ standard, owner, hookContext, renderSlot }: {
   readonly renderSlot: ChatFlowSlotProps['renderSlot']
 }) {
   const hooks = useMemo(() => ({
+    useStore: CHAT_FLOW_INJECT.hooks.store(standard, hookContext),
     useGroupAction: CHAT_FLOW_INJECT.hooks.groupAction(standard, hookContext),
     useGroupHeaderAction: CHAT_FLOW_INJECT.hooks.groupHeaderAction(standard, hookContext),
   }), [standard, hookContext])
@@ -452,8 +453,8 @@ function makeHarness(
   }
   const renderSlot: FlowRenderer = (key, owner, opts) => {
     if (key !== 'conversation.chat.flow') throw new Error(`Undeclared ChatView child: ${key}`)
-    if ('renderSlot' in owner || 'useStore' in owner || 'actions' in owner) {
-      throw new Error('Flow owner data must not replace its rendering or store authority')
+    if ('renderSlot' in owner || 'useStore' in owner) {
+      throw new Error('Flow owner data must not replace its rendering or hook authority')
     }
     return <HarnessChatFlow standard={props} owner={owner} hookContext={opts.hookContext} renderSlot={renderFlowSlot} />
   }
@@ -4403,5 +4404,46 @@ describe('ChatView', () => {
     expect(status?.querySelector('animate')).toBeNull()
     act(() => { h.setSession({ running: false }) })
     expect(column.querySelector('[data-chat-running]')).toBeNull()
+  })
+})
+
+
+describe('native Chat content occurrence policy', () => {
+  it('keeps normal rows and hides durable users, steering, and local echoes only in the requested occurrence', () => {
+    const h = makeHarness({
+      nodes: [userInTurn(1, 'durable user', 1), steering(2, 'durable steering', 1),
+        toolResult(3, 'readonly-tool'), assistant(4, 'native answer')],
+      turnEnds: new Map([[1, 5]]),
+    }, {
+      pendingSubmissions: [{ requestId: 'local' as never, placement: 'transcript', time: 6_000,
+        text: 'local echo', attachments: [] }],
+      testInbox: { 'next-turn': [], 'next-step': [{ id: MessageId('pending'), role: 'user',
+        source: { kind: 'user' }, content: [{ type: 'text', text: 'pending steering' }] }] },
+    })
+    const view = render(<>
+      <section data-testid="interactive"><ChatView {...h.props} /></section>
+      <section data-testid="readonly"><ChatView {...h.props} mode="readonly" hideUserMessages /></section>
+    </>)
+    const normal = within(view.getByTestId('interactive'))
+    const readonly = within(view.getByTestId('readonly'))
+    for (const text of ['durable user', 'durable steering', 'local echo', 'pending steering']) {
+      expect(normal.getByText(text)).toBeTruthy()
+      expect(readonly.queryByText(text)).toBeNull()
+    }
+    expect(readonly.getByText('native answer')).toBeTruthy()
+    expect(readonly.getByTestId('tool-seat-readonly-tool')).toBeTruthy()
+    expect(readonly.queryByRole('textbox')).toBeNull()
+    expect(readonly.queryByRole('button', { name: h.props.t('message.branch') })).toBeNull()
+    expect(readonly.getByRole('button', { name: h.props.t('copy') })).toBeTruthy()
+    expect(normal.getByRole('button', { name: h.props.t('message.branch') })).toBeTruthy()
+    expect(h.forkAt).not.toHaveBeenCalled()
+  })
+
+  it('keeps readonly user copy when hiding is omitted and never makes references interactive', () => {
+    const h = makeHarness({ nodes: [user(1, 'visible user')] })
+    const view = render(<ChatView {...h.props} mode="readonly" />)
+    expect(view.getByText('visible user')).toBeTruthy()
+    expect(view.getByRole('button', { name: h.props.t('copy') })).toBeTruthy()
+    expect(view.queryByRole('textbox')).toBeNull()
   })
 })

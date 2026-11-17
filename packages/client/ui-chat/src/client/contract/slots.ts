@@ -11,7 +11,7 @@ import type {
   MessageImageLoader, MessageImageSource, MessageImagesOwnerProps, RenderEntry, TurnLocation, UserTextFacts, UserTextInput,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
-  HostObservable, InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime,
+  FactoryComponentPropsOf, HostObservable, InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime,
   PropsRenderFactories, PropsStore, SlotHookFactory, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
@@ -181,11 +181,14 @@ export type UseGroupHeaderAction = (ref: RefObject<HTMLElement | null>, hidden: 
 /** Viewport capability supplied once for each rendered Chat flow. */
 export interface ChatFlowHookContext {
   readonly motion: FlowMotionRows
+  /** Framework-bound store hook of this Factory occurrence. */
+  readonly useStore: ChatContentProps['useStore']
 }
 
 /** Flow-wide behavior hooks bound to one viewport, independently of Session identity. */
 export interface ChatFlowInjected {
   hooks: {
+    store: SlotHookFactory<'conversation.chat.flow', ChatContentProps['useStore']>
     groupAction: SlotHookFactory<'conversation.chat.flow', UseGroupAction>
     groupHeaderAction: SlotHookFactory<'conversation.chat.flow', UseGroupHeaderAction>
   }
@@ -207,8 +210,37 @@ export interface ChatNodeInjected {
   }
 }
 
+/** Display policy local to one rendered Chat occurrence; it never changes Session access or model history. */
+export interface ChatContentPolicy {
+  /** Interactive by default; readonly omits Session mutation controls. */
+  readonly mode?: 'interactive' | 'readonly' | undefined
+  /** Omit durable user/steering rows and pending echoes in this occurrence. */
+  readonly hideUserMessages?: boolean | undefined
+}
+
+/** Existing framework-bound store capability forwarded by a native host entry. */
+export interface ChatContentHookContext {
+  /** Framework-created selector hook; callers must not construct their own hook. */
+  readonly useStore: PropsStore<ChatStore>['useStore']
+  /** Matching callbacks from the same framework store binding. */
+  readonly actions: PropsStore<ChatStore>['actions']
+}
+
+/** Session-bound native Chat body without a header, input store, or composer. */
+export interface ChatContentInput extends ChatContentPolicy {
+  /** Optional navigation into an existing tool inspector. */
+  readonly inspectCall?: ((callId: ToolCallId) => void) | undefined
+  /** Optional host-provided scroll persistence; omission keeps memory local to this occurrence. */
+  readonly scrollMemory?: ChatViewInjected['chatScroll'] | undefined
+  /** Optional existing framework-bound store pair; omission uses this occurrence's disclosure store. */
+  readonly hookContext?: ChatContentHookContext | undefined
+}
+
+/** Complete framework-derived props of the reusable native Chat body. */
+export type ChatContentProps = FactoryComponentPropsOf<'conversation.chat.content'>
+
 /** Stable owner currency delivered to a keyed Chat renderer. */
-export interface ChatNodeOwnerProps {
+export interface ChatNodeOwnerProps extends ChatContentPolicy {
   /** Renderer-owned Node portion selected by the grouping Definition. */
   groupPart?: string
   cwd?: string | undefined
@@ -330,7 +362,9 @@ export type ChatFlowDataInjected = Pick<ChatViewInjected, 'hooks' | 'keyedHooks'
 
 /** Ordered rows and reconciled local echoes rendered inside one Chat viewport. */
 export interface ChatFlowOwnerProps extends Pick<ChatNodeOwnerProps,
-  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions'> {
+  'cwd' | 'openFile' | 'inspectCall' | 'forkAt' | 'loadImage' | 'fileMentions' | 'mode' | 'hideUserMessages'> {
+  /** Mutation callbacks of this Factory occurrence's viewing state. */
+  readonly actions: ChatContentProps['actions']
   readonly entries: readonly RenderEntry[]
   readonly pendingInputs: readonly (PendingSubmission | InboxState['next-step'][number])[]
   readonly lastInputTurn: number | undefined
@@ -348,7 +382,9 @@ export type ChatFlowSlotProps =
 
 /** Full Chat view props. */
 export type ChatViewSlotProps =
-  PropsRuntime<'conversation.view'>
+  ChatContentPolicy
+  & Pick<ChatContentInput, 'scrollMemory' | 'hookContext'>
+  & PropsRuntime<'conversation.view'>
   & PropsRenderSlots<'conversation.chat.flow'>
   & PropsStore<ChatStore>
   & InjectFace<ChatViewInjected>
@@ -370,6 +406,18 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 
   interface SlotFactoryMap {
+    /** Reusable native Chat history and live output, with per-occurrence display policy and no composer. */
+    'conversation.chat.content': {
+      scope: 'session'
+      props: ChatContentInput
+      locale: 'chat'
+      store: ChatStore
+      inject: ChatViewInjected
+      children: {
+        'conversation.chat.flow': { kind: 'single'; scope: 'session'; inject: ChatFlowInjected }
+      }
+    }
+
     /** Prepared user text, attachments, and references inside a caller-owned message row. */
     'conversation.chat.user.content': {
       scope: 'session'

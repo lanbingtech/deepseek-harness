@@ -2,12 +2,12 @@
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, fireEvent, render } from '@testing-library/react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
-  SlotTestRuntime, stubConfigForm, usePinnedBrowserLanguages,
+  SlotTestRuntime, bindSnapshotSelector, stubConfigForm, usePinnedBrowserLanguages,
 } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
+import { resolveSlotLabel, type InjectFace, type PropsRenderFactories, type PropsRuntime, type PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -22,15 +22,21 @@ import {
   apply as applyChat, EMPTY_CHAT_SNAPSHOT, inject as injectChat,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
-  ChatFlowInjected, ChatNodeInjected, ChatSnapshot, TranscriptViewRowInjected, UseChatNodeTurnData, UseDisclosure,
+  ChatContentProps, ChatStore, ChatFlowInjected, ChatFlowSlotProps, ChatNodeInjected, ChatSnapshot,
+  ChatViewInjected, TranscriptViewRowInjected, UseChatNodeTurnData, UseDisclosure,
 } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { QuotaNoticeInjected } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { PerformanceUsageRowInjected } from '../src/client/settings/PerformanceUsageRow.tsx'
 import { CHAT_SETTINGS_NAMESPACE, type ChatSettings } from '../src/chat-settings.ts'
 import { ActivityPill, UsagePill } from '../src/client/chat/StatsPills.tsx'
+import { createChatStore } from '../src/client/stores.ts'
 import { createFlowMotion, type InputFoldDriver } from '../src/client/chat/flow-motion.ts'
 import { CHAT_FLOW_INJECT, CHAT_NODE_INJECT } from '../src/client/apply.ts'
 import { UserContent } from '../src/client/chat/UserContent.tsx'
+import { ChatView } from '../src/client/chat/ChatView.tsx'
+import { DefaultChatView } from '../src/client/chat/DefaultChatView.tsx'
+import { InputHub } from '../../ui-conversation/src/client/input/hub.ts'
+import { installTurnNavigatorObserver } from './turn-navigator-fixture.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ConversationTurnDataMap {
@@ -42,7 +48,20 @@ usePinnedBrowserLanguages('zh-CN')
 
 const SID = 'session-1' as SessionId
 
-async function bench() {
+function FlowStateProbe({ useStore, actions, mode }: ChatFlowSlotProps) {
+  const open = useStore(state => state.turnProcesses[0]?.collapsed !== true)
+  return <button onClick={() => { actions.setTurnProcessOpen(1, 1, !open) }}>
+    {mode ?? 'interactive'}:{String(open)}
+  </button>
+}
+
+function DefaultViewTestSeat(props: PropsRuntime<'conversation.approval.detail'> & PropsRenderFactories & PropsStore<ChatStore>
+  & InjectFace<Pick<ChatViewInjected, 'chatScroll'>>) {
+  return <DefaultChatView {...props} inspectCall={undefined} viewRequest={null}
+    openView={() => {}} completeViewRequest={() => {}} />
+}
+
+async function bench(factoryOnly: boolean | 'default' = false) {
   const runtime = await SlotTestRuntime.create()
   const chatSettings = stubConfigForm<ChatSettings>()
   runtime.ctx.provide('configForms', {
@@ -73,12 +92,26 @@ async function bench() {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.ctx.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  if (factoryOnly) await runtime.sessions.add({ id: SID })
+  const reference = factoryOnly ? runtime.sessions.retainFor(runtime.ctx, SID) : undefined
+  let setBodies: ((visible: boolean) => void) | undefined
   await runtime.root.declare({
     'main': { kind: 'keyed', scope: 'root' },
     'shell.overlay': { kind: 'list', scope: 'root' },
     'conversation.approval.detail': { kind: 'single', scope: 'session' },
     'settings.general.item': { kind: 'list', scope: 'root' },
-  }, (_props: { renderSlot?: unknown }) => null)
+  }, function Root(props) {
+    const [visible, setVisible] = useState(false)
+    setBodies = setVisible
+    if (!factoryOnly || !visible) return null
+    if (factoryOnly === 'default') return <props.SessionProvider session={reference}>
+      {props.renderSlot('conversation.approval.detail', {})}
+    </props.SessionProvider>
+    return <props.SessionProvider session={reference}>
+      {props.renderFactorySlot('conversation.chat.content', {})}
+      {props.renderFactorySlot('conversation.chat.content', { mode: 'readonly', hideUserMessages: true })}
+    </props.SessionProvider>
+  })
   const conversation = await runtime.mount({
     inject: [...injectConversation],
     apply: applyConversation,
@@ -87,7 +120,10 @@ async function bench() {
   const chat = await runtime.mount({ inject: [...injectChat], apply: applyChat })
   const sourceDescriptor = provide.mock.calls[0]?.[0]
   if (sourceDescriptor === undefined) throw new Error('ui-chat did not provide its standard source')
-  return { runtime, conversation, chat, chatSettings, sourceDescriptor }
+  return {
+    runtime, conversation, chat, chatSettings, sourceDescriptor,
+    showBodies: (visible = true) => { act(() => { setBodies?.(visible) }) },
+  }
 }
 
 function storeOf(runtime: SlotTestRuntime, key: 'conversation.session' | 'conversation.session.header' | 'conversation.view') {
@@ -95,6 +131,80 @@ function storeOf(runtime: SlotTestRuntime, key: 'conversation.session' | 'conver
 }
 
 describe('Chat apply wiring', () => {
+  it('mounts the public native body without constructing input, restoring drafts, or mounting a composer', async () => {
+    installTurnNavigatorObserver()
+    const shellFor = vi.spyOn(InputHub.prototype, 'shellFor')
+    onTestFinished(() => { shellFor.mockRestore(); vi.unstubAllGlobals() })
+    const b = await bench(true)
+    onTestFinished(() => b.runtime.dispose())
+    const view = b.runtime.renderRoot()
+    b.showBodies()
+    const body = b.runtime.factoryOf('conversation.chat.content')
+    expect(body.component).toBe(ChatView)
+    expect(body.scope).toBe('session')
+    expect(Object.keys(body.children ?? {})).toEqual(['conversation.chat.flow'])
+    expect(shellFor).not.toHaveBeenCalled()
+    expect(view.queryByRole('textbox')).toBeNull()
+    expect(view.container.querySelector('[data-chat-flow]')).not.toBeNull()
+  })
+
+  it('isolates process folding and scroll restoration across concurrent native Factory occurrences of one Session', async () => {
+    installTurnNavigatorObserver()
+    onTestFinished(() => vi.unstubAllGlobals())
+    const b = await bench(true)
+    onTestFinished(() => b.runtime.dispose())
+    await b.runtime.mount({ inject: ['slots'], apply(ctx) {
+      ctx.slots.register({ name: 'conversation.chat.flow', priority: -100 }, FlowStateProbe)
+    } })
+    const view = b.runtime.renderRoot()
+    const definition = b.runtime.factoryOf('conversation.chat.content')
+    const inject = definition.inject!
+    const memories: ChatViewInjected['chatScroll'][] = []
+    const spy = vi.spyOn(definition, 'inject').mockImplementation((...args) => {
+      const result = inject(...args)
+      memories.push(result.chatScroll as ChatViewInjected['chatScroll'])
+      return result
+    })
+    onTestFinished(() => spy.mockRestore())
+    b.showBodies()
+    expect(view.getByRole('button', { name: 'interactive:true' })).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: 'readonly:true' }))
+    expect(view.getByRole('button', { name: 'readonly:false' })).toBeTruthy()
+    expect(view.getByRole('button', { name: 'interactive:true' })).toBeTruthy()
+    expect(memories).toHaveLength(2)
+    const [normal, readonly] = memories
+    const position = { anchorKey: 'answer', anchorTop: 4, scrollTop: 12 }
+    readonly!.save(position)
+    expect(readonly!.read()).toEqual(position)
+    expect(normal!.read()).toBeNull()
+    normal!.save({ ...position, scrollTop: 88 })
+    expect(readonly!.read()).toEqual(position)
+    readonly!.save(null)
+    expect(normal!.read()?.scrollTop).toBe(88)
+  })
+
+  it('preserves the ordinary native disclosure memory when its content unmounts and remounts', async () => {
+    installTurnNavigatorObserver()
+    onTestFinished(() => vi.unstubAllGlobals())
+    const b = await bench('default')
+    onTestFinished(() => b.runtime.dispose())
+    const defaultEntry = b.runtime.slots.entries('conversation.view')[0]!
+    await b.runtime.mount({ inject: ['slots'], apply(ctx) {
+      ctx.slots.register({ name: 'conversation.chat.flow', priority: -100 }, FlowStateProbe)
+      ctx.slots.register({ name: 'conversation.approval.detail', priority: -100, store: defaultEntry.store!,
+        inject: (sessionId, actions) => defaultEntry.inject!(sessionId as never, actions as never) as Pick<ChatViewInjected, 'chatScroll'>,
+      }, DefaultViewTestSeat)
+    } })
+    const view = b.runtime.renderRoot()
+    b.showBodies()
+    fireEvent.click(view.getByRole('button', { name: 'interactive:true' }))
+    expect(view.getByRole('button', { name: 'interactive:false' })).toBeTruthy()
+    b.showBodies(false)
+    expect(view.queryByRole('button', { name: 'interactive:false' })).toBeNull()
+    b.showBodies()
+    expect(view.getByRole('button', { name: 'interactive:false' })).toBeTruthy()
+  })
+
   it('keeps presentation-policy helpers out of the public browser entry', async () => {
     const entry = await import('../src/client/index.ts')
     expect(entry).not.toHaveProperty('derivePresentationPolicy')
@@ -147,7 +257,8 @@ describe('Chat apply wiring', () => {
     onTestFinished(() => b.runtime.dispose())
     b.runtime.renderRoot()
     expect(b.runtime.slots.spec('conversation.chat.flow')).toMatchObject({ kind: 'single', scope: 'session' })
-    const view = b.runtime.slots.entries('conversation.view')[0]
+    const view = b.runtime.factoryOf('conversation.chat.content')
+    expect(b.runtime.slots.entries('conversation.view')[0]?.children).toBeUndefined()
     const flow = b.runtime.slots.entries('conversation.chat.flow')[0]
     const assistant = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'assistant-step')
     const userContent = b.runtime.factoryOf('conversation.chat.user.content')
@@ -165,8 +276,8 @@ describe('Chat apply wiring', () => {
     expect(flow?.children?.['conversation.chat.user.images']).toBeUndefined()
     expect(userContent.children?.['conversation.chat.message.images']).toBeUndefined()
     expect(assistant?.children?.['conversation.chat.user.images']).toBeUndefined()
-    expect(flow?.store).toBeDefined()
-    expect(flow?.store).toBe(view?.store)
+    expect(flow?.store).toBeUndefined()
+    expect(view.store).toBe(createChatStore)
     await b.chat.dispose()
     expect(b.runtime.slots.spec('conversation.chat.flow')).toBeUndefined()
     expect(b.runtime.slots.spec('conversation.chat.node')).toBeUndefined()
@@ -271,10 +382,11 @@ describe('Chat apply wiring', () => {
     await b.runtime.dispose()
   })
 
-  it('shares one Chat store while keeping it distinct from Conversation state', async () => {
+  it('declares occurrence-local Chat stores distinct from Conversation state', async () => {
     const b = await bench()
     const conversationStore = storeOf(b.runtime, 'conversation.session')
-    const chatStore = storeOf(b.runtime, 'conversation.view')
+    b.runtime.renderRoot()
+    const chatStore = b.runtime.factoryOf('conversation.chat.content').store
     expect(storeOf(b.runtime, 'conversation.session.header')).toBe(conversationStore)
     expect(chatStore).toBeDefined()
     expect(chatStore).not.toBe(conversationStore)
@@ -381,10 +493,12 @@ describe('Chat apply wiring', () => {
     const driverSecond = vi.fn<() => InputFoldDriver | null>(() => null)
     const first = createFlowMotion(driverFirst, () => {})
     const second = createFlowMotion(driverSecond, () => {})
-    const useFirst = spec.inject.hooks.groupAction(standard, { motion: first })
-    const useSecond = spec.inject.hooks.groupAction(standard, { motion: second })
-    const useFirstHeader = spec.inject.hooks.groupHeaderAction(standard, { motion: first })
-    const useSecondHeader = spec.inject.hooks.groupHeaderAction(standard, { motion: second })
+    const store = createChatStore().create()
+    const useStore: ChatContentProps['useStore'] = bindSnapshotSelector(store)
+    const useFirst = spec.inject.hooks.groupAction(standard, { motion: first, useStore })
+    const useSecond = spec.inject.hooks.groupAction(standard, { motion: second, useStore })
+    const useFirstHeader = spec.inject.hooks.groupHeaderAction(standard, { motion: first, useStore })
+    const useSecondHeader = spec.inject.hooks.groupHeaderAction(standard, { motion: second, useStore })
     expect(nodeSpec.inject.hooks.groupAction(standard, {
       turnData: undefined, disclosureReset: createSnapshotStore(0), useGroupAction: useFirst,
     })).toBe(useFirst)

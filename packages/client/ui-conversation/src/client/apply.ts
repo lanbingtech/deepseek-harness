@@ -32,6 +32,7 @@ import type { IConversation } from './service.ts'
 import { ComposerBlockRegistry } from './input/blocks.ts'
 import type { ComposerBlock } from './contract/composer-blocks.ts'
 import { InputHub } from './input/hub.ts'
+import { lazyInput } from './input/lazy-input.ts'
 import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
 import { queueDockEntry } from './queue/QueueDock.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
@@ -313,7 +314,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     props: ['inputActions'],
     resolve: (binding) => {
       trackBinding(binding)
-      const shell = inputHub.shellFor(binding)
+      const shell = lazyInput(() => inputHub.shellFor(binding))
       const conversation = uiConversation.binding(binding)
       restoreView(binding.sessionId)
       return {

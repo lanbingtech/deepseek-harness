@@ -296,13 +296,13 @@ export function PendingSubmissionBubble({ submission, loadImage, renderFactorySl
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderFactorySlot, loadImage, t,
+  node, renderFactorySlot, loadImage, t, mode,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
   return (
     <UserStyleBubble
       content={data.content}
-      interactive
+      interactive={mode !== 'readonly'}
       renderFactorySlot={renderFactorySlot}
       loadImage={loadImage}
       {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
