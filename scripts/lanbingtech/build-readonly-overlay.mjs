@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -33,7 +33,11 @@ for (const directory of directories) {
   await run([join(root, 'node_modules/tsdown/dist/run.mjs')], join(root, directory))
   await run([pnpm, 'pack', '--pack-destination', output, '--json'], join(root, directory))
   const tarball = join(output, `${metadata.name.replace('@', '').replace('/', '-')}-${version}.tgz`)
-  packages.push({ name: metadata.name, version, tarball, sha256: await digest(tarball), clientSha256: await digest(join(root, directory, 'lib/client.js')) })
+  const sha256 = await digest(tarball)
+  const sdkName = metadata.name.replace('@deepseek-ai/dsh-client-ui-', '')
+  const sdkTarball = join(output, `sdk-${sdkName}-${sha256}.tgz`)
+  await copyFile(tarball, sdkTarball)
+  packages.push({ name: metadata.name, version, tarball, sdkTarball, sha256, clientSha256: await digest(join(root, directory, 'lib/client.js')) })
 }
 const manifest = { verified: false, packages, builtAt: new Date().toISOString() }
 await writeFile(join(output, 'manifest.json'), JSON.stringify(manifest, null, 2))
