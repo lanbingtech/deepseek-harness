@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-api-gateway/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/remote'
 import type { WorkspaceFileParams } from '@deepseek-ai/dsh-api-workspace-files/client'
-import { TextPreview } from './TextPreview.tsx'
+import { DocumentPreview, SidebarDocumentPreview, type DocumentPreviewInput } from './DocumentPreview.tsx'
 import type { TextPreviewInjected } from './TextPreview.tsx'
 import { TextTitle } from './TextTitle.tsx'
 import { TEXTPREVIEW_ID, textDefinition } from './definition.ts'
@@ -73,6 +73,22 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Text-preview progress, paging, change, control, and failure lines. */
     sidebarDocumentPreview: import('./locales.ts').SidebarDocumentPreviewKey
   }
+  interface SlotFactoryMap {
+    /** Native file reader that can render outside the conversation Sidebar. */
+    'document.preview': {
+      scope: 'session'
+      props: DocumentPreviewInput
+      locale: 'sidebarDocumentPreview'
+      store: import('./store.ts').TextStore
+      inject: TextPreviewInjected
+      children: {
+        'sidebar.right.tab.document': { kind: 'keyed'; scope: 'session'; inject: { hooks: { tabInfo: typeof documentTabInfoFactory } } }
+        'sidebar.right.tab.document.actions': { kind: 'list'; scope: 'session' }
+        'sidebar.right.tab.document.unpreviewable': { kind: 'list'; scope: 'session' }
+        'sidebar.right.tab.document.action': { kind: 'keyed'; scope: 'session'; inject: { hooks: { tabInfo: typeof documentTabInfoFactory } } }
+      }
+    }
+  }
 }
 
 /**
@@ -100,9 +116,9 @@ export function apply(ctx: ClientContext): void {
     ctx.resources,
   )
   const source = { getSnapshot: previews.getSnapshot, subscribe: previews.subscribe }
-  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
+  ctx.effect(() => ctx.slots.registerFactory(
     {
-      name: 'sidebar.right.pane.tab', key: TEXTPREVIEW_ID, locale: NS, store,
+      name: 'document.preview', scope: 'session', locale: NS, store,
       children: {
         'sidebar.right.tab.document': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: documentTabInfoFactory } } },
         'sidebar.right.tab.document.actions': { kind: 'list', scope: 'session' },
@@ -113,7 +129,10 @@ export function apply(ctx: ClientContext): void {
         ...face(sessionId, actions), hooks: { documentPreviews: source },
       }),
     },
-    TextPreview,
+    DocumentPreview,
+  ), 'ui-sidebar-documentpreview: document factory')
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register(
+    { name: 'sidebar.right.pane.tab', key: TEXTPREVIEW_ID }, SidebarDocumentPreview,
   )), 'ui-sidebar-documentpreview: text body')
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register(
     { name: 'sidebar.right.pane.tab.title', key: TEXTPREVIEW_ID },

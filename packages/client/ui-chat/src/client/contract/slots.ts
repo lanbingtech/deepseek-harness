@@ -228,6 +228,8 @@ export interface ChatContentHookContext {
 
 /** Session-bound native Chat body without a header, input store, or composer. */
 export interface ChatContentInput extends ChatContentPolicy {
+  /** Optional file navigation owned by an embedded view; omission uses the conversation Sidebar. */
+  readonly onOpenFile?: ChatViewInjected['openFile'] | undefined
   /** Optional navigation into an existing tool inspector. */
   readonly inspectCall?: ((callId: ToolCallId) => void) | undefined
   /** Optional host-provided scroll persistence; omission keeps memory local to this occurrence. */

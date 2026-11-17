@@ -17,7 +17,7 @@ import { TEXTPREVIEW_ID, TEXTPREVIEW_KIND } from '../src/client/definition.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { OfficeFontAction } from '../src/client/office/OfficeFontAction.tsx'
 import { OfficeBody } from '../src/client/office/OfficeBody.tsx'
-import { TextPreview } from '../src/client/TextPreview.tsx'
+import { DocumentPreview, SidebarDocumentPreview } from '../src/client/DocumentPreview.tsx'
 import { TextTitle } from '../src/client/TextTitle.tsx'
 import { TextBody } from '../src/client/text/TextBody.tsx'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
@@ -38,7 +38,7 @@ import { FILE, SESSION, TAB_ID, byteResult, createResources, page } from './fixt
 
 interface Recorded {
   name: string
-  key: string
+  key?: string
   locale?: string
   store?: unknown
   inject?: unknown
@@ -52,6 +52,11 @@ async function boot() {
   const tabs = new SidebarRightTabRegistry(ctx)
   const registered: Recorded[] = []
   const slots = {
+    registerFactory: vi.fn((options: Omit<Recorded, 'component'>, component: unknown) => {
+      const entry = { ...options, component }
+      registered.push(entry)
+      return () => { registered.splice(registered.indexOf(entry), 1) }
+    }),
     inject: vi.fn((_name: string, register: () => () => void) => register()),
     register: vi.fn((options: Omit<Recorded, 'component'>, component: unknown) => {
       const entry: Recorded = { ...options, component }
@@ -89,7 +94,8 @@ describe('ui-sidebar-documentpreview apply', () => {
     // The seat key is the implementation's id, not the kind: an extension may
     // take the kind over, and the seat must still find this body.
     expect(registered.map(entry => [entry.name, entry.key, entry.locale, entry.component])).toEqual([
-      ['sidebar.right.pane.tab', TEXTPREVIEW_ID, 'sidebarDocumentPreview', TextPreview],
+      ['document.preview', undefined, 'sidebarDocumentPreview', DocumentPreview],
+      ['sidebar.right.pane.tab', TEXTPREVIEW_ID, undefined, SidebarDocumentPreview],
       ['sidebar.right.pane.tab.title', TEXTPREVIEW_ID, undefined, TextTitle],
       ['sidebar.right.tab.document', PLAIN_BODY_ID, undefined, TextBody],
       ['sidebar.right.tab.document', MARKDOWN_BODY_ID, 'documentMarkdown', MarkdownBody],
@@ -140,7 +146,7 @@ describe('ui-sidebar-documentpreview apply', () => {
 
   it('injects paged and byte Remote reads independently of resource metadata', async () => {
     const { registered, read, readBytes } = await boot()
-    const registration = registered.find(entry => entry.component === TextPreview)
+    const registration = registered.find(entry => entry.component === DocumentPreview)
     if (registration === undefined) throw new Error('missing preview registration')
     const instance = (registration.store as TextStore).create()
     const face = (registration.inject as ReturnType<typeof textFace>)(SESSION, instance.actions)

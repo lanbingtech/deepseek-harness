@@ -3640,6 +3640,15 @@ describe('ChatView', () => {
     expect(h.openView).toHaveBeenCalledWith('trajectory', 'a')
   })
 
+  it('opens embedded-view files through the caller while leaving the conversation Sidebar untouched', async () => {
+    const h = makeHarness({ nodes: [toolResult(3, 'a')] })
+    const open = vi.fn<(path: string) => Promise<void>>().mockResolvedValue(undefined)
+    render(<ChatView {...h.props} onOpenFile={open} />)
+    await act(async () => { h.toolOwners[0]!.openFile('sources/含 空格.md', { line: 3 }) })
+    expect(open).toHaveBeenCalledExactlyOnceWith('sources/含 空格.md', { line: 3 })
+    expect(h.openFile).not.toHaveBeenCalled()
+  })
+
   it('shows a Host open refusal with the reason and retries the same path', async () => {
     const openFile = vi.fn<(path: string) => Promise<void>>()
       .mockRejectedValueOnce(new Error('xdg-open is not available'))

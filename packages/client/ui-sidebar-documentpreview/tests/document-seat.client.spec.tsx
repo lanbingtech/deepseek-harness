@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Document extension registration and dispatch through the production Sidebar and Slot renderer. */
-import { byteResult } from './fixtures.client.ts'
+import { byteResult, page as textPage } from './fixtures.client.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
@@ -15,6 +15,12 @@ import type { DocumentPreviewProps } from '../src/client/document/contract.ts'
 import type { DocumentLoadMode } from '../src/client/document/registry.ts'
 import type { WorkspaceFilesReadRemote } from '../src/client/rpc.ts'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'test.document-preview': { kind: 'single'; scope: 'session'; owner: { path: string; line?: number } }
+  }
+}
 
 const SESSION = 'documents' as SessionId
 const SHORTCUT_CATALOG: readonly never[] = []
@@ -36,7 +42,7 @@ afterEach(async () => {
   }
 })
 
-async function boot() {
+async function boot(standalonePath?: string) {
   const rt = await SlotTestRuntime.create()
   runtime = rt
   rt.ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) } } as never)
@@ -48,9 +54,11 @@ async function boot() {
   await rt.declare({
     rightbar: { kind: 'single', scope: 'root' },
     'conversation.session.header.corner': { kind: 'single', scope: 'session' },
+    'test.document-preview': { kind: 'single', scope: 'session' },
   })
   await rt.sessions.add({ id: SESSION })
-  await rt.sessions.retainFor(rt.ctx, SESSION, { source: 'mainView' }).ready
+  const reference = rt.sessions.retainFor(rt.ctx, SESSION, { source: 'mainView' })
+  await reference.ready
   await rt.mount({ inject: [...resourcesInject], apply: resourcesApply })
   const read = vi.fn<WorkspaceFilesReadRemote['workspaceFiles']['read']>().mockImplementation(async (_sessionId, _path, range) => ({
     ok: true,
@@ -66,7 +74,9 @@ async function boot() {
   }))
   await rt.mount({ inject: [...sidebarInject], apply: sidebarApply })
   await rt.mount({ inject: [...inject], apply })
-  const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true })
+  rt.ctx.effect(() => rt.slots.register({ name: 'test.document-preview' }, ({ path, line, renderFactorySlot }) => renderFactorySlot('document.preview', { path, line })))
+  const standalone = (path: string, line?: number) => rt.renderSlot('test.document-preview', { path, ...(line === undefined ? {} : { line }) }, { session: reference })
+  const view = standalonePath === undefined ? rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true }) : standalone(standalonePath)
   const open = (name: string): void => {
     act(() => { rt.ctx.sidebarRight.openResource('dsh-resource://file/session/documents/' + name) })
   }
@@ -92,10 +102,48 @@ async function boot() {
     ))
     return () => { removeBody(); removeDefinition() }
   })
-  return { rt, view, open, register, read, bytes }
+  return { rt, view, open, register, read, bytes, standalone }
 }
 
 describe('document extension seat', () => {
+  it('preserves the ordinary Sidebar file cache when switching between its tabs', async () => {
+    const h = await boot()
+    h.open('first.unknown')
+    await waitFor(() => { expect(h.read.mock.calls.filter(call => call[1] === 'first.unknown')).toHaveLength(1) })
+    h.open('second.unknown')
+    await waitFor(() => { expect(h.read.mock.calls.filter(call => call[1] === 'second.unknown')).toHaveLength(1) })
+    h.open('first.unknown')
+    await waitFor(() => { expect(h.view.container.querySelector('[data-textpreview-url]')?.getAttribute('data-textpreview-url')).toBe(sessionFileAddress(SESSION, 'first.unknown')) })
+    expect(h.read.mock.calls.filter(call => call[1] === 'first.unknown')).toHaveLength(1)
+  })
+
+  it('navigates to a new line when a standalone document occurrence stays mounted', async () => {
+    const h = await boot('lines.txt')
+    await waitFor(() => { expect(h.view.container.querySelectorAll('[data-textpreview-line]')).toHaveLength(2) })
+    const row = h.view.container.querySelector('[data-textpreview-line="2"]')!
+    const body = h.view.container.querySelector('[data-textpreview-body]')!
+    Object.defineProperty(row, 'offsetTop', { configurable: true, value: 48 })
+    h.standalone('lines.txt', 2)
+    await waitFor(() => { expect(body.scrollTop).toBe(48) })
+    expect(h.read).toHaveBeenCalledOnce()
+  })
+
+  it('reads a standalone Session file without a mounted Sidebar and aborts the replaced file', async () => {
+    const h = await boot('sources/含 空格.md')
+    expect(() => { h.open('elsewhere.md') }).toThrow('no session surface is mounted')
+    await waitFor(() => { expect(h.view.container.querySelector('[data-document-markdown]')?.textContent).toContain('first') })
+    expect(h.read.mock.calls[0]).toEqual([SESSION, 'sources/含 空格.md', { offset: 1 }, expect.any(AbortSignal)])
+    const previousSignal = h.read.mock.calls[0]![3]
+    const replacement = Promise.withResolvers<Awaited<ReturnType<WorkspaceFilesReadRemote['workspaceFiles']['read']>>>()
+    h.read.mockReturnValueOnce(replacement.promise)
+    h.standalone('/reports/report.md')
+    await waitFor(() => { expect(h.read.mock.calls.some(call => call[1] === '/reports/report.md')).toBe(true) })
+    expect(previousSignal.aborted).toBe(true)
+    expect(h.view.container.querySelector('[data-document-markdown]')?.textContent ?? '').not.toContain('first')
+    await act(async () => { replacement.resolve(textPage(1, ['replacement file'], true)) })
+    await waitFor(() => { expect(h.view.container.querySelector('[data-document-markdown]')?.textContent).toContain('replacement file') })
+  })
+
   it.each(['notes.unknown', '/other/notes.unknown', 'C:/other/notes.unknown', '//host/share/notes.unknown'])(
     'reads %s through its addressed Session rather than the mounted Tab Session',
     async (path) => {
