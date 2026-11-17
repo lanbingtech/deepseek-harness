@@ -24,6 +24,23 @@ const signal = () => new AbortController().signal
 beforeEach(() => { execFileMock.mockReset() })
 
 describe('native path opener', () => {
+  it('resolves the existing short Windows name before opening a long file', async () => {
+    const path = `C:\\materials\\${'a'.repeat(64)}\\${'b'.repeat(64)}\\${'c'.repeat(64)}\\raw\\${'folder'.repeat(8)}\\image.jpeg`
+    const run = vi.fn<PathOpenerRunner>(async command => ({ stdout: command === 'powershell.exe' ? '\\\\?\\C:\\MATERI~1\\A~1\\B~1\\C~1\\raw\\FOLDER~1\\IMAGE~1.JPE\r\n' : '', stderr: '' }))
+    await openNativeAssociatedPath(path, signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenCalledTimes(2)
+    expect(run.mock.calls[0]?.[0]).toBe('powershell.exe')
+    expect(run.mock.calls[0]?.[3]).toBe('hidden')
+    expect(run.mock.calls[1]?.slice(0, 2)).toEqual(['explorer.exe', ['file:///C:/MATERI%7E1/A%7E1/B%7E1/C%7E1/raw/FOLDER%7E1/IMAGE%7E1.JPE']])
+  })
+
+  it('does not send an unshortened long path to Explorer', async () => {
+    const path = `C:\\materials\\${'a'.repeat(64)}\\${'b'.repeat(64)}\\${'c'.repeat(64)}\\raw\\${'folder'.repeat(8)}\\image.jpeg`
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: path, stderr: '' }))
+    await expect(openNativeAssociatedPath(path, signal(), { platform: 'win32', run })).rejects.toThrow(/long path/i)
+    expect(run).toHaveBeenCalledTimes(1)
+  })
+
   it('opens with macOS open(1)', async () => {
     const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
     await openNativePath('/Users/test/file.txt', signal(), { platform: 'darwin', run })

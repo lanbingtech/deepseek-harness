@@ -13,7 +13,7 @@
  */
 
 import { release as osRelease } from 'node:os'
-import { dirname, extname } from 'node:path'
+import { dirname, extname, win32 } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { runNativeCommand, type NativeCommandRunner } from './runner.ts'
 
@@ -152,7 +152,34 @@ async function runExplorer(args: readonly string[], signal: AbortSignal, run: Pa
  * @param run - shell-free command runner.
  */
 async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
-  await runExplorer([explorerTarget(path)], signal, run)
+  const target = path.length < 260 ? path : await windowsShellPath(path, signal, run)
+  await runExplorer([explorerTarget(target)], signal, run)
+}
+
+/** Resolve an existing filesystem alias; Explorer cannot reliably open MAX_PATH-exceeding names. */
+async function windowsShellPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<string> {
+  const encodedPath = Buffer.from(win32.toNamespacedPath(path), 'utf16le').toString('base64')
+  const script = `$ErrorActionPreference='Stop'
+[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class NativeShellPath {
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ public static extern uint GetShortPathName(string source, StringBuilder target, uint capacity);
+}
+'@
+$source=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('${encodedPath}'))
+$target=New-Object Text.StringBuilder 32768
+$count=[NativeShellPath]::GetShortPathName($source,$target,32768)
+if($count -eq 0){throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())}
+[Console]::Out.Write($target.ToString())`
+  const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], signal, 'hidden')
+  signal.throwIfAborted()
+  const alias = result.stdout.replace(/[\r\n]+$/, '')
+  if (!win32.isAbsolute(alias) || alias.length >= 260) throw new Error('The Windows shell cannot open this long path: no usable short filename exists')
+  return alias
 }
 
 /** Translate a WSL path before handing it to the Windows desktop. */
