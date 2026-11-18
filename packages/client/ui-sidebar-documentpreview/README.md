@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Preview files in the right Sidebar and choose among registered renderers. Markdown and code support paged text; PDF, HTML, common images, and spreadsheets receive complete bytes; unknown extensions use plain text. Word and PowerPoint documents convert locally to PDF; spreadsheets open in the browser. The tab provides file status, renderer selection, wrap, and automatic or manual reload. Plugins can add local opening controls to the header and unsupported-preview empty state.
 
+Domain plugins can claim known Markdown files through the Session-scoped `document.markdown.presentation` chain. Its owner supplies `absolutePath`, accumulated `text` and `eof`. Presentations call the `document.markdown.content` Factory with those data and their chosen body text to retain native Markdown labels, streaming and local images. Declining entries keep the existing frontmatter and body presentation. File reads, navigation and toolbar ownership stay with the preview.
+
 ## Table of Contents
 
 - [What it registers](#what-it-registers)

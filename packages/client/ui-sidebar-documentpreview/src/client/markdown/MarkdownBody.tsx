@@ -2,7 +2,8 @@
 import { lazy, Suspense, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { MarkdownText, type MarkdownLabels, type MarkdownPathImages } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { FactoryComponentPropsOf, PropsLocale, PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from './contract.ts'
 import type { DocumentPreviewProps } from '../document/contract.ts'
 import { splitFrontmatter } from './frontmatter.ts'
 import type { FrontmatterFieldsProps } from './frontmatter-fields.tsx'
@@ -22,7 +23,10 @@ const FrontmatterFields = lazy(() => import('./frontmatter-fields.tsx').then(
 ))
 
 /** Standard document inputs and this implementation's locale. */
-export type MarkdownBodyProps = DocumentPreviewProps & PropsLocale<'documentMarkdown'>
+export type MarkdownBodyProps = DocumentPreviewProps & PropsLocale<'documentMarkdown'> & PropsRenderFactories & PropsRenderSlots<'document.markdown.presentation'>
+
+/** Native content factory inputs; no file reads or toolbar state are owned here. */
+export type MarkdownContentProps = Pick<FactoryComponentPropsOf<'document.markdown.content'>, 'text' | 'eof' | 'absolutePath' | 't'>
 
 /**
  * Render one accumulated document; EOF completes the primitive's full parse.
@@ -31,8 +35,28 @@ export type MarkdownBodyProps = DocumentPreviewProps & PropsLocale<'documentMark
  * @param props - owner-loaded contents and localized primitive labels.
  * @returns Markdown content, or nothing for a non-text delivery.
  */
-export function MarkdownBody({ content, resourceAddress, useResource, t }: MarkdownBodyProps): ReactNode {
+export function MarkdownBody({ content, resourceAddress, useResource, renderSlotChain, renderFactorySlot }: MarkdownBodyProps): ReactNode {
   const absolutePath = useResource<'file'>(resourceAddress).value?.absolutePath
+  const text = content.kind === 'text' ? content.text : ''
+  const split = useMemo(() => splitFrontmatter(text), [text])
+  if (content.kind !== 'text') return null
+  const eof = content.eof
+  return (
+    <div className={css.document} data-document-markdown>
+      {renderSlotChain('document.markdown.presentation', { absolutePath, text, eof }, { fallback: <>
+        {split === undefined ? null : <FrontmatterBox source={split.source} />}
+        {renderFactorySlot('document.markdown.content', { text: split?.body ?? text, eof, absolutePath })}
+      </> })}
+    </div>
+  )
+}
+
+/**
+ * Render shared Markdown with native localization, streaming and local-image resolution.
+ * @param props - source text, completion, Host path and native labels.
+ * @returns native Markdown content.
+ */
+export function MarkdownContent({ text, eof, absolutePath, t }: MarkdownContentProps): ReactNode {
   const pathImages = useMemo<MarkdownPathImages>(() => ({
     resolve: value => markdownImageUrl(document.baseURI, absolutePath, value),
   }), [absolutePath])
@@ -45,15 +69,7 @@ export function MarkdownBody({ content, resourceAddress, useResource, t }: Markd
   const labels = useMemo<MarkdownLabels>(() => ({
     code: { copyLabel, copiedLabel, toolbarLabels: { codeLabel, wrapLabel, unwrapLabel } }, footnotes,
   }), [copyLabel, copiedLabel, footnotes, codeLabel, wrapLabel, unwrapLabel])
-  const text = content.kind === 'text' ? content.text : ''
-  const split = useMemo(() => splitFrontmatter(text), [text])
-  if (content.kind !== 'text') return null
-  return (
-    <div className={css.document} data-document-markdown>
-      {split === undefined ? null : <FrontmatterBox source={split.source} />}
-      <MarkdownText text={split?.body ?? text} streaming={!content.eof} labels={labels} pathImages={pathImages} />
-    </div>
-  )
+  return <MarkdownText text={text} streaming={!eof} labels={labels} pathImages={pathImages} />
 }
 
 /**

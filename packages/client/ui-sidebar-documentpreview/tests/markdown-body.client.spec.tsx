@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { MarkdownBody, type MarkdownBodyProps } from '../src/client/markdown/MarkdownBody.tsx'
+import { MarkdownBody, MarkdownContent, type MarkdownBodyProps } from '../src/client/markdown/MarkdownBody.tsx'
 import { en, zh } from '../src/client/markdown/locales.ts'
 import type { DocumentContent } from '../src/client/document/contract.ts'
 
@@ -24,6 +24,8 @@ function content(pageTexts: readonly string[], eof: boolean): DocumentContent {
 function props(value: DocumentContent, t: MarkdownBodyProps['t'] = makeTranslate(en), absolutePath?: string): MarkdownBodyProps {
   return {
     resourceAddress: 'dsh-resource://file/session/markdown/notes.md', content: value, wrap: false, t,
+    renderSlotChain: (_name, _owner, options) => options?.fallback,
+    renderFactorySlot: (_name, input) => <MarkdownContent {...input} t={t} />,
     useResource: () => ({
       status: absolutePath === undefined ? 'loading' : 'live',
       value: absolutePath === undefined ? undefined : { absolutePath, version: 'v1' },
@@ -33,6 +35,16 @@ function props(value: DocumentContent, t: MarkdownBodyProps['t'] = makeTranslate
 }
 
 describe('MarkdownBody', () => {
+  it('lets a domain presentation reuse native Markdown rendering without displaying internal frontmatter', () => {
+    const supplied = props(content(['---\nid: internal\n---\n# Article'], true), undefined, '/knowledge/pages/article.md')
+    const presentation = vi.fn(() => <><dl><dt>标题</dt><dd>Article</dd></dl><MarkdownContent text="# Article" eof absolutePath="/knowledge/pages/article.md" t={supplied.t} /></>)
+    supplied.renderSlotChain = presentation
+    const view = render(<MarkdownBody {...supplied} />)
+    expect(view.getByText('标题')).toBeTruthy()
+    expect(view.getByRole('heading', { name: 'Article' })).toBeTruthy()
+    expect(view.queryByText('internal')).toBeNull()
+    expect(presentation).toHaveBeenCalledWith('document.markdown.presentation', expect.objectContaining({ text: '---\nid: internal\n---\n# Article', eof: true, absolutePath: '/knowledge/pages/article.md' }), expect.anything())
+  })
   it.each(['http://localhost/', 'dsh-app://app/'])('loads document images and failure text under %s', (base) => {
     vi.spyOn(document, 'baseURI', 'get').mockReturnValue(base)
     const text = '![relative](images/a.png) ![absolute](/tmp/a.png) ![external](https://example.test/a.png)'

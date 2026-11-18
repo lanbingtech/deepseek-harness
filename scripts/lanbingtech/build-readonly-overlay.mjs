@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const output = join(root, '.artifacts/native-readonly')
-const version = '0.2.1-rc.2.lanbingtech.3'
-const directories = ['packages/client/ui-conversation', 'packages/client/ui-chat', 'packages/client/ui-tool', 'packages/client/ui-sidebar-documentpreview']
+const partial = process.argv.includes('--document-preview-only')
+const directories = partial ? ['packages/client/ui-sidebar-documentpreview'] : ['packages/client/ui-conversation', 'packages/client/ui-chat', 'packages/client/ui-tool', 'packages/client/ui-sidebar-documentpreview']
 const env = { ...process.env, DSH_CLIENT_VERSION: '0.2.1-rc.2', DSH_CLIENT_COMMIT_HASH: '687f282' }
 async function run(args, cwd = root) {
   await new Promise((done, reject) => {
@@ -27,9 +27,10 @@ await run([join(root, 'node_modules/typescript/bin/tsc'), '-b',
 const pnpmPackage = join(root, 'node_modules/pnpm/package.json')
 const pnpmMetadata = JSON.parse(await readFile(pnpmPackage, 'utf8'))
 const pnpm = resolve(dirname(pnpmPackage), typeof pnpmMetadata.bin === 'string' ? pnpmMetadata.bin : pnpmMetadata.bin.pnpm)
-const packages = []
+const packages = partial ? JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8')).packages.filter(item => item.name !== '@deepseek-ai/dsh-client-ui-sidebar-documentpreview') : []
 for (const directory of directories) {
   const metadata = JSON.parse(await readFile(join(root, directory, 'package.json'), 'utf8'))
+  const version = metadata.name === '@deepseek-ai/dsh-client-ui-sidebar-documentpreview' ? '0.2.1-rc.2.lanbingtech.4' : '0.2.1-rc.2.lanbingtech.3'
   if (metadata.version !== version) throw new Error(`Unexpected readonly package version: ${metadata.name}`)
   await run([join(root, 'node_modules/tsdown/dist/run.mjs')], join(root, directory))
   await run([pnpm, 'pack', '--pack-destination', output, '--json'], join(root, directory))

@@ -21,7 +21,7 @@ import { DocumentPreview, SidebarDocumentPreview } from '../src/client/DocumentP
 import { TextTitle } from '../src/client/TextTitle.tsx'
 import { TextBody } from '../src/client/text/TextBody.tsx'
 import { PLAIN_BODY_ID } from '../src/client/text/index.ts'
-import { MarkdownBody } from '../src/client/markdown/MarkdownBody.tsx'
+import { MarkdownBody, MarkdownContent } from '../src/client/markdown/MarkdownBody.tsx'
 import { MARKDOWN_BODY_ID } from '../src/client/markdown/index.ts'
 import { HtmlBody } from '../src/client/html/HtmlBody.tsx'
 import { HTML_BODY_ID } from '../src/client/html/index.ts'
@@ -99,6 +99,7 @@ describe('ui-sidebar-documentpreview apply', () => {
       ['sidebar.right.pane.tab.title', TEXTPREVIEW_ID, undefined, TextTitle],
       ['sidebar.right.tab.document', PLAIN_BODY_ID, undefined, TextBody],
       ['sidebar.right.tab.document', MARKDOWN_BODY_ID, 'documentMarkdown', MarkdownBody],
+      ['document.markdown.content', undefined, 'documentMarkdown', MarkdownContent],
       ['sidebar.right.tab.document', HTML_BODY_ID, 'documentHtml', HtmlBody],
       ['sidebar.right.tab.document', IMAGE_BODY_ID, 'sidebarImage', ImageBody],
       ['sidebar.right.tab.document', PDF_BODY_ID, 'sidebarPdf', LazyPdfBody],

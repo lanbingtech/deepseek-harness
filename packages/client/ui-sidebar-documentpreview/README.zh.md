@@ -11,6 +11,8 @@ kind: "package-reference"
 
 在右侧 Sidebar 预览文件，并切换已注册的渲染器。Markdown 和代码支持分页文本；PDF、HTML、常见图片和表格接收完整字节；未知扩展名使用纯文本。Word 与 PowerPoint 文档在本地转换为 PDF；表格在浏览器内打开。tab 提供文件状态、渲染器选择、换行以及自动或手动重新载入。插件可在头部和不支持预览的空态中添加本地打开控件。
 
+业务插件可通过 Session 作用域的 `document.markdown.presentation` chain 认领特定 Markdown 文件。输入包含 `absolutePath`、累计 `text` 和 `eof`。业务展示把这些数据和选定的正文交给 `document.markdown.content` Factory，继续使用原生文案、流式状态及本地图片解析。未认领文件沿用现有属性和正文展示，文件读取、导航及工具栏仍归预览组件所有。
+
 ## 目录
 
 - [注册了什么](#what-it-registers)
