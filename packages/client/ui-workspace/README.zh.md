@@ -246,3 +246,7 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 无。
 
 </details>
+
+## 嵌入浏览器
+
+根 Factory `workspace.browser` 渲染完整原生浏览器。调用方提供 `scope`、可选的 `workspaceIds`、`selectedSessionId`、`onSelect`、`onNew(workspaceId?)` 和 `onFork`。成员范围在搜索及显示前应用。指定工作区时保留空分组，用户可以在空工作区内新建会话。每个实例默认按工作区树显示，视图偏好与搜索状态独立保存在内存中。选择和分支调用业务回调，不跳转主对话。工作区实体、置顶及归档仍遵循原生共享规则。嵌入面板使用已有工作区，不提供新增目录入口。

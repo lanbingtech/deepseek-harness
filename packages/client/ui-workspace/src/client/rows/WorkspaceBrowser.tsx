@@ -15,7 +15,7 @@
  * action callbacks and hosts no action surface.
  */
 import type { WorkspaceBrowserScopeSnapshot } from '../browser-scope.ts'
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   Button, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
@@ -42,6 +42,7 @@ import { AnimatedRows } from './AnimatedRows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import { SessionRowOutlet } from './SessionRow.tsx'
+import { WorkspaceBrowserOccurrenceContext } from '../occurrence.ts'
 import css from './WorkspaceBrowser.module.css'
 
 /**
@@ -327,9 +328,10 @@ function SessionTree({
   setSessionOrder, home, t,
   revealSessionId, onSessionRevealed, shortcuts,
 }: SessionTreeProps) {
+  const occurrence = useContext(WorkspaceBrowserOccurrenceContext)
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
-  const current = panelActive
+  const current = occurrence ? occurrence.selectedSessionId ?? undefined : panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const revealGroup = revealSessionId === undefined || !workspaceReady
@@ -567,7 +569,7 @@ function SessionTree({
             if (group.expanded) dropWatermarks(key => withinGroup(key, group.key))
             setGroupExpanded(group.key, !group.expanded)
           }}
-          onCreate={() => {
+          onCreate={occurrence && !occurrence.onNew ? undefined : () => {
             if (group.workspaceId !== undefined) {
               setGroupExpanded(group.key, true)
               startSession(group.workspaceId)
@@ -713,6 +715,7 @@ function FlatList({
   list: SessionListState
   sessionIds: readonly SessionId[]
 }) {
+  const occurrence = useContext(WorkspaceBrowserOccurrenceContext)
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
   const rows = useMemo(
@@ -722,7 +725,7 @@ function FlatList({
   const [drag, setDrag] = useState<DragState | null>(null)
   const dropCommitted = useRef(false)
   useNativeDragAcceptance(drag !== null)
-  const currentId = panelActive
+  const currentId = occurrence ? occurrence.selectedSessionId ?? undefined : panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const commitDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
@@ -839,6 +842,7 @@ function SearchResults({
   remote: RemoteSearchState
   resultLimit: number
 }) {
+  const occurrence = useContext(WorkspaceBrowserOccurrenceContext)
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const completeList = useSessions(s => s)
   const list = useMemo(() => projectSessionList(completeList, members), [completeList, members])
@@ -860,7 +864,7 @@ function SearchResults({
     [list, workspaces, query, archivedSessionIds, archivedFilter, statuses, currentRemote, resultLimit],
   )
   const pending = currentRemote.status === 'loading'
-  const currentId = panelActive
+  const currentId = occurrence ? occurrence.selectedSessionId ?? undefined : panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
 
@@ -922,8 +926,8 @@ export function WorkspaceBrowser({
   useWorkspaces,
   useStore,
   actions,
-  startSession,
-  open,
+  startSession: defaultStartSession,
+  open: defaultOpen,
   requestSessionRename,
   notifyArchivedNotOpenable,
   renameWorkspace,
@@ -938,25 +942,50 @@ export function WorkspaceBrowser({
   useBrowserScope,
   useShortcuts,
   useWorkspaceShortcuts,
-  requestSearch,
-  requestAddWorkspace,
-  closeAddWorkspace,
-  setDirectoryBusy,
+  requestSearch: defaultRequestSearch,
+  requestAddWorkspace: defaultRequestAddWorkspace,
+  closeAddWorkspace: defaultCloseAddWorkspace,
+  setDirectoryBusy: defaultSetDirectoryBusy,
   renderSlot, renderFactorySlot,
   t,
-}: WorkspaceBrowserProps) {
-  const scope = useBrowserScope(value => value)
-  const members = useMemo(() => scope === undefined || (scope.status === 'ready' && scope.memberSessionIds === undefined)
-    ? undefined : new Set(scope.status === 'ready' ? scope.memberSessionIds : []), [scope])
+}: Omit<WorkspaceBrowserProps, 'renderSlot'> & Partial<Pick<WorkspaceBrowserProps, 'renderSlot'>>) {
+  const occurrence = useContext(WorkspaceBrowserOccurrenceContext)
+  const requestAddWorkspace = occurrence ? () => {} : defaultRequestAddWorkspace
+  const closeAddWorkspace = occurrence ? () => {} : defaultCloseAddWorkspace
+  const setDirectoryBusy = occurrence ? (_busy: boolean) => {} : defaultSetDirectoryBusy
+  const globalScope = useBrowserScope(value => value)
+  const scope = occurrence?.scope ?? globalScope
+  const startSession: WorkspaceBrowserProps['startSession'] = occurrence
+    ? (workspaceId) => { occurrence.onNew?.(workspaceId) }
+    : defaultStartSession
+  const open = occurrence?.onSelect ?? defaultOpen
+  const allWorkspaces = useWorkspaces(state => state.items)
+  const selectedWorkspaceIds = occurrence?.workspaceIds
+  const members = useMemo(() => {
+    const scoped = scope === undefined || (scope.status === 'ready' && scope.memberSessionIds === undefined)
+      ? undefined : new Set(scope.status === 'ready' ? scope.memberSessionIds : [])
+    if (selectedWorkspaceIds === undefined) return scoped
+    const account = allWorkspaces
+      .filter(workspace => selectedWorkspaceIds.includes(workspace.workspaceId))
+      .flatMap(workspace => workspace.sessionIds)
+    return new Set(account.filter(id => scoped === undefined || scoped.has(id)))
+  }, [scope, allWorkspaces, selectedWorkspaceIds])
   const home = useHostInfo(info => info.home)
   const shortcuts = useShortcuts(rows => rows)
   const searchShortcut = shortcuts.find(row => row.id === 'session.search')
   const addShortcut = shortcuts.find(row => row.id === 'workspace.add')
-  const shortcutState = useWorkspaceShortcuts(state => state)
+  const globalShortcutState = useWorkspaceShortcuts(state => state)
+  const [localSearchRequest, setLocalSearchRequest] = useState(0)
+  const shortcutState = occurrence
+    ? { ...globalShortcutState, searchRequest: localSearchRequest, addRequested: false }
+    : globalShortcutState
+  const requestSearch = occurrence ? () => { setLocalSearchRequest(value => value + 1) } : defaultRequestSearch
   // Ordering remains live while the rail or search replaces the list body.
   const list = useSessions(state => state)
   const scopedList = useMemo(() => projectSessionList(list, members), [list, members])
-  const storedWorkspaces = useWorkspaces(state => state.items)
+  const storedWorkspaces = useMemo(() => selectedWorkspaceIds === undefined
+    ? allWorkspaces
+    : allWorkspaces.filter(workspace => selectedWorkspaceIds.includes(workspace.workspaceId)), [allWorkspaces, selectedWorkspaceIds])
   // The resolved name, not `t`, is the memo dependency: the bound seat keeps
   // its identity across a language switch.
   const defaultWorkspaceName = t('workspace.defaultName')
@@ -973,7 +1002,8 @@ export function WorkspaceBrowser({
   const pinnedSessionIds = useWorkspaces(state => state.pinnedSessionIds)
   // Live occupancy of this surface's directory-flow hole (the same source the
   // flow reads): a composition without a picking affordance can add nothing.
-  const directoryFlowAvailable = useDirectoryFlow(occupied => occupied)
+  const flowAvailable = useDirectoryFlow(occupied => occupied)
+  const directoryFlowAvailable = !occurrence && flowAvailable
   const groupBy = useStore(s => s.groupBy)
   const orderBy = useStore(s => s.orderBy)
   // Persisted view blobs written before the archived filter existed rehydrate
@@ -992,7 +1022,7 @@ export function WorkspaceBrowser({
   }
   const leaveArchivedOnly = (): void => { actions.setArchivedFilter('default') }
   const workspaceReady = workspacePhase === 'ready' && workspaceStreamState !== 'loading'
-  const mainSessionId = Object.values(list.byId)
+  const mainSessionId = occurrence ? occurrence.selectedSessionId ?? undefined : Object.values(list.byId)
     .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const currentBlank = mainSessionId !== undefined && list.byId[mainSessionId]?.blank === true
     ? mainSessionId
@@ -1191,7 +1221,7 @@ export function WorkspaceBrowser({
       hasMore: false,
     })
     const timer = window.setTimeout(() => {
-      const range = scope?.status === 'ready' ? scope.memberSessionIds : undefined
+      const range = members === undefined ? undefined : [...members]
       const request = range === undefined
         ? searchSessions(normalizedQuery, controller.signal)
         : searchSessions(normalizedQuery, controller.signal, range)
@@ -1219,7 +1249,7 @@ export function WorkspaceBrowser({
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [normalizedQuery, searchSessions, scope])
+  }, [normalizedQuery, searchSessions, scope, members])
 
   // Rename dialog (browser-owned so it outlives row unmounts during collapse).
   // The stored title decides whether confirming is a real rename; the draft is
@@ -1300,7 +1330,7 @@ export function WorkspaceBrowser({
 
   return (
     <div className={clsx(css.root, !wide && css.rail)}>
-      {renderSlot('sidebar.workspaces.header', {})}
+      {!occurrence && renderSlot?.('sidebar.workspaces.header', {})}
       <div className={css.sectionHeader}>
         {wide && (
           <span className={clsx(css.sectionLabel, css.wide, searchExpanded && css.sectionLabelHidden)}>
@@ -1397,14 +1427,14 @@ export function WorkspaceBrowser({
           )}
         </div>
         {/* Add flow + its error dialog (same package — direct composition). */}
-        <WorkspacePickFlow
+        {!occurrence && <WorkspacePickFlow
           t={t}
           open={wsPickerOpen}
           anchorRef={wsPlusRef}
           useWorkspaces={useWorkspaces}
           createWorkspace={createWorkspace}
           useDirectoryFlow={useDirectoryFlow}
-          renderDirectoryFlow={owner => renderSlot('sidebar.workspaces.directoryFlow', owner)}
+          renderDirectoryFlow={owner => renderSlot?.('sidebar.workspaces.directoryFlow', owner) ?? null}
           addOnly
           onBusyChange={setDirectoryBusy}
           side="right"
@@ -1413,7 +1443,7 @@ export function WorkspaceBrowser({
             startSession(workspaceId, { clearPreviousDraft: false })
           }}
           onClose={() => { closeAddWorkspace() }}
-        />
+        />}
       </div>
 
       {/* The collapsed rail keeps search as its own 36px control. */}
@@ -1492,7 +1522,7 @@ export function WorkspaceBrowser({
                   ungroupedSessionIds={scopedIds(orderedUngroupedSessionIds)}
                   workspaceReady={workspaceReady}
                   nestWorkspaces={groupBy === 'workspace-tree'}
-                  hideEmptyGroups={members !== undefined}
+                  hideEmptyGroups={!occurrence && members !== undefined}
                   animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
                   groupExpansion={groupExpansion}
                   setGroupExpanded={actions.setGroupExpanded}

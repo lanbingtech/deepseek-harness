@@ -194,3 +194,7 @@ None; Conversation assembly and browser input state do not alter provider-side p
 None.
 
 </details>
+
+## Local workspace controls
+
+`conversation.content` accepts optional `workspaceIds`, `onSelectWorkspace` and `showAgentPreset`. These keep the original Hero, workspace picker and composer layout while routing workspace selection to the embedding owner. `workspaceIds` limits existing picker entries and omits directory creation. `showAgentPreset: false` hides only the local preset selector. Omission preserves main Conversation behavior. A view with no Session keeps the native inert composer until its owner supplies a Session.

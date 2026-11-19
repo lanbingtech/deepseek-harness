@@ -49,6 +49,7 @@ import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { NativeSessionRow } from './rows/SessionRow.tsx'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
+import { EmbeddedWorkspaceBrowser } from './EmbeddedBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
 import { ForkSessionMenuItem } from './session-actions/ForkSession.tsx'
@@ -62,6 +63,7 @@ import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type { WorkspaceBrowserScope, WorkspaceBrowserScopeContribution, WorkspaceBrowserScopeSnapshot } from './browser-scope.ts'
 export type { NativeSessionRowOwnerProps } from './rows/SessionRow.tsx'
+export type { WorkspaceBrowserOccurrence } from './EmbeddedBrowser.tsx'
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
@@ -295,6 +297,10 @@ export function apply(ctx: Context): void {
     createWorkspace: input => workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
+  ctx.slots.registerFactory({
+    name: 'workspace.browser', scope: 'root', locale: NS,
+    store: () => createWorkspaceViewStore(true), inject: browserInjected,
+  }, EmbeddedWorkspaceBrowser)
   // Each registration declares its owned children in the same call; slot
   // injection follows both the owner and declaration HMR lifetimes.
   ctx.slots.registerFactory({

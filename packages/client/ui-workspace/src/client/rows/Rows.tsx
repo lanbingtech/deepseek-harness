@@ -221,7 +221,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
   onToggle: () => void
-  onCreate: () => void
+  onCreate?: (() => void) | undefined
   /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
   actions?: { rename: () => void; delete: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
@@ -294,7 +294,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
             )}
           />
         )}
-        <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>
+        {onCreate && <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>
           <button
             type="button"
             className={css.iconButton}
@@ -304,7 +304,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
           >
             <IconNewChatOutlineRegular />
           </button>
-        </Tooltip>
+        </Tooltip>}
       </span>
     </div>
   )

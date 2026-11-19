@@ -25,6 +25,8 @@ const ADD_WORKSPACE = '::add-workspace'
 
 /** Core flow props: the owner supplies popover control and pick semantics. */
 export interface WorkspacePickFlowProps {
+  /** Visible registered workspaces; omission preserves the main picker. */
+  workspaceIds?: readonly WorkspaceId[] | undefined
   /** The standard locale seat, forwarded by whichever slot entry hosts the flow. */
   t: WorkspacePickerProps['t']
   /** Popover visibility (anchor button toggle state, owner-local). */
@@ -71,10 +73,12 @@ export function WorkspacePickFlow({
   addOnly = false,
   onBusyChange,
   side = 'bottom',
-  selectedId,
+  selectedId, workspaceIds,
 }: WorkspacePickFlowProps) {
   const workspaceSnapshot = useWorkspaces(state => state)
-  const workspaces = workspaceSnapshot.items
+  const workspaces = workspaceIds === undefined
+    ? workspaceSnapshot.items
+    : workspaceSnapshot.items.filter(workspace => workspaceIds.includes(workspace.workspaceId))
   const getAnchorRect = useCallback(
     () => anchorRef?.current?.getBoundingClientRect() ?? null,
     [anchorRef],
@@ -94,7 +98,8 @@ export function WorkspacePickFlow({
   // entry simply is not there (the seam's documented no-flow default). The
   // framework-bound hook keeps occupancy live: flow plugins activate (and
   // HMR-reload) independently of this menu's renders.
-  const flowAvailable = useDirectoryFlow(occupied => occupied)
+  const directoryAvailable = useDirectoryFlow(occupied => occupied)
+  const flowAvailable = workspaceIds === undefined && directoryAvailable
   // An occupant that unloads mid-interaction leaves nobody to cancel: an
   // open flow over an empty hole withdraws so the menu actions come back.
   // flowOpen is a dependency because the flow can also OPEN over an already
@@ -231,7 +236,7 @@ export function WorkspacePicker({
   open,
   anchorRef,
   useWorkspaces,
-  selectedId,
+  selectedId, workspaceIds,
   onPick,
   onClose,
   createWorkspace,
@@ -249,6 +254,7 @@ export function WorkspacePicker({
       useDirectoryFlow={useDirectoryFlow}
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
       selectedId={selectedId}
+      workspaceIds={workspaceIds}
       onPick={onPick}
       onClose={onClose}
     />

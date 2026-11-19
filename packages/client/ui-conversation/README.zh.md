@@ -194,3 +194,7 @@ selector 必须是 owner currency 的纯函数。非 null 返回值作为 `match
 无。
 
 </details>
+
+## 当前面板的工作区控件
+
+`conversation.content` 接受可选的 `workspaceIds`、`onSelectWorkspace` 和 `showAgentPreset`。这些参数保留原生欢迎区域、工作区选择器和输入框布局，并将工作区选择交给业务调用方。`workspaceIds` 筛选已有工作区并隐藏新增目录入口。`showAgentPreset: false` 只隐藏当前面板的智能体选择器。省略参数时保持主对话行为。没有会话时保留原生不可输入状态，直到调用方提供会话。

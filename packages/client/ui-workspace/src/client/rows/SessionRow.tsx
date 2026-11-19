@@ -1,5 +1,6 @@
 /** The native Session row, reusable without changing the main workspace selection. */
-import type { ComponentProps } from 'react'
+import { useContext, type ComponentProps } from 'react'
+import { WorkspaceBrowserOccurrenceContext } from '../occurrence.ts'
 import type { FactoryComponentPropsOf, PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionNode } from '../tree.ts'
@@ -76,5 +77,6 @@ export function NativeSessionRow(props: FactoryComponentPropsOf<'workspace.sessi
  * @returns one native factory occurrence.
  */
 export function SessionRowOutlet({ node, currentId, onOpen, now, onReveal, drag, renderFactorySlot }: Omit<ComponentProps<typeof SessionNodeItem>, 'renderSlot'> & PropsRenderFactories) {
-  return renderFactorySlot('workspace.session-row', { sessionId: node.id, selectedSessionId: node.id === currentId ? node.id : undefined, onSelect: onOpen, now, onReveal, drag })
+  const occurrence = useContext(WorkspaceBrowserOccurrenceContext)
+  return renderFactorySlot('workspace.session-row', { sessionId: node.id, selectedSessionId: occurrence ? occurrence.selectedSessionId : node.id === currentId ? node.id : undefined, onSelect: onOpen, onFork: occurrence?.onFork, showDecorations: occurrence ? false : undefined, now, onReveal, drag })
 }

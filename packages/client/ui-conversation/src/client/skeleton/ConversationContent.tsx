@@ -17,7 +17,7 @@ function DefaultConversationHero({ t, renderSlot }: ConversationHeroProps) {
 }
 
 function DefaultConversationHeroControls({
-  sessionId, workspaceTitle, workspacePickerOpen, selectedWorkspaceId,
+  sessionId, workspaceTitle, workspacePickerOpen, selectedWorkspaceId, workspaceIds, showAgentPreset,
   onToggleWorkspacePicker, onPickWorkspace, onCloseWorkspacePicker, renderSlot, t,
 }: ConversationHeroControlsProps) {
   const pickerAnchor = useRef<HTMLButtonElement>(null)
@@ -33,11 +33,11 @@ function DefaultConversationHeroControls({
       {renderSlot('conversation.hero.workspace', {
         open: workspacePickerOpen,
         anchorRef: pickerAnchor,
-        selectedId: selectedWorkspaceId,
+        selectedId: selectedWorkspaceId, workspaceIds,
         onPick: onPickWorkspace,
         onClose: onCloseWorkspacePicker,
       })}
-      {renderSlot('conversation.hero.agentPreset', {})}
+      {showAgentPreset !== false && renderSlot('conversation.hero.agentPreset', {})}
       {sessionId === undefined ? null : <div className={css.heroOptions}>{renderSlot('conversation.hero.options', {})}</div>}
     </div>
   )
@@ -56,8 +56,9 @@ export function ConversationContent(props: ConversationContentProps) {
   const {
     sessionId, phase, hero, workspaceRequired = true, placeholder, useSession, useSessions, useSessionStatus,
     useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
-    selectWorkspace, t, useFactorySlot,
+    selectWorkspace: defaultSelectWorkspace, onSelectWorkspace, workspaceIds, showAgentPreset, t, useFactorySlot,
   } = props
+  const selectWorkspace = onSelectWorkspace ?? defaultSelectWorkspace
   const session = useSession(snapshot => snapshot)
   const Views = useFactorySlot('views', ConversationSessionView)
   const Hero = useFactorySlot('hero', DefaultConversationHero)
@@ -146,7 +147,7 @@ export function ConversationContent(props: ConversationContentProps) {
   const pickWorkspace = useCallback((workspaceId: WorkspaceId) => {
     setPickerOpen(false)
     setPendingWorkspaceId(workspaceId)
-    void selectWorkspace(workspaceId).catch(() => {
+    void Promise.resolve(selectWorkspace(workspaceId)).catch(() => {
       setPendingWorkspaceId(current => current === workspaceId ? undefined : current)
     })
   }, [selectWorkspace])
@@ -182,6 +183,8 @@ export function ConversationContent(props: ConversationContentProps) {
     <div className={clsx(css.composerStack, hero && css.composerHero)}>
       {hero && <Hero />}
       {hero && <HeroControls
+        workspaceIds={workspaceIds}
+        showAgentPreset={showAgentPreset}
         workspaceTitle={chipTitle}
         workspacePickerOpen={pickerOpen}
         selectedWorkspaceId={pendingWorkspaceId ?? sessionWorkspace?.workspaceId}

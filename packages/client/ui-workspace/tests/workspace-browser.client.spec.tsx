@@ -18,6 +18,7 @@ import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
 import { NativeSessionRow, type NativeSessionRowOwnerProps } from '../src/client/rows/SessionRow.tsx'
+import { WorkspaceBrowserOccurrenceContext, type WorkspaceBrowserOccurrence } from '../src/client/occurrence.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
@@ -105,7 +106,7 @@ const renderDirectoryFlowOnly: WorkspaceBrowserProps['renderSlot'] = (name: stri
     ? <div data-testid="directory-flow" />
     : null
 
-function mount(overrides: Partial<WorkspaceBrowserProps> = {}, renderRowSlot: FactoryComponentPropsOf<'workspace.session-row'>['renderSlot'] = () => null) {
+function mount(overrides: Partial<WorkspaceBrowserProps> = {}, renderRowSlot: FactoryComponentPropsOf<'workspace.session-row'>['renderSlot'] = () => null, occurrence?: WorkspaceBrowserOccurrence) {
   const controls = createWorkspaceShortcutControls()
   const store = createWorkspaceViewStore().create()
   const props: WorkspaceBrowserProps = {
@@ -145,17 +146,63 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}, renderRowSlot: Fa
     t,
     ...overrides,
   }
-  const view = render(<WorkspaceBrowser {...props} />)
-  return { view, props, store, controls }
+  const view = render(<WorkspaceBrowserOccurrenceContext.Provider value={occurrence}>
+    <WorkspaceBrowser {...props} />
+  </WorkspaceBrowserOccurrenceContext.Provider>)
+  return { view, props, store, controls, occurrence }
 }
 
 /** Re-render with (possibly) changed props — WorkspaceBrowser has no side channel. */
 function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrowserProps>) {
   Object.assign(b.props, overrides)
-  b.view.rerender(<WorkspaceBrowser {...b.props} />)
+  b.view.rerender(<WorkspaceBrowserOccurrenceContext.Provider value={b.occurrence}>
+    <WorkspaceBrowser {...b.props} />
+  </WorkspaceBrowserOccurrenceContext.Provider>)
 }
 
 describe('WorkspaceBrowser', () => {
+  it('keeps an embedded read-only browser from creating or navigating main sessions', () => {
+    const occurrence: WorkspaceBrowserOccurrence={ scope:{ id:'empty',revision:1,status:'ready',memberSessionIds:[] },workspaceIds:[wid('center')],selectedSessionId:null,onSelect:vi.fn(),onFork:vi.fn() }
+    const local=createWorkspaceViewStore(true).create()
+    const b=mount({ useStore:bindSnapshotSelector(local),actions:local.actions,useWorkspaces:hook(workspaceState([workspace('center',[])])) },()=>null,occurrence)
+    expect(screen.getByText('center')).toBeTruthy()
+    expect(screen.queryByRole('button',{ name:t('actions.newSession.aria',{ name:'center' }) })).toBeNull()
+    expect(b.props.startSession).not.toHaveBeenCalled()
+  })
+
+
+  it('isolates embedded selection, tree membership and search controls from the main browser', async () => {
+    const local = createWorkspaceViewStore(true).create()
+    const onSelect = vi.fn(), onNew = vi.fn(), onFork = vi.fn()
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id:'embedded', revision:1, status:'ready', memberSessionIds:[sid('qa')] }, workspaceIds:[wid('center'),wid('library')], selectedSessionId:sid('qa'),onSelect,onNew,onFork }
+    const b = mount({ useStore: bindSnapshotSelector(local), actions:local.actions,
+      useSessions:hook(sessionState([summary('qa',2),summary('main',3)],{ main:sid('main') })),
+      useWorkspaces:hook(workspaceState([
+        { ...workspace('center',[]),path:'/knowledge-center' },
+        { ...workspace('library',['qa']),path:'/knowledge-center/bases/library/wiki' },
+        { ...workspace('other',['main']),path:'/other' },
+      ])),
+    },()=>null,occurrence)
+    expect(local.getSnapshot().groupBy).toBe('workspace-tree')
+    expect(screen.queryByText('other')).toBeNull()
+    expect(screen.getByText('center')).toBeTruthy()
+    const row=screen.getByText('qa').closest('[role="treeitem"]')!
+    expect(row.getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(row)
+    expect(onSelect).toHaveBeenCalledWith('qa')
+    expect(b.props.open).not.toHaveBeenCalled()
+    act(() => { b.controls.add(); b.controls.directoryBusy(true) })
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+    const search=screen.getByRole('button',{ name:t('search.sessions.aria') })
+    fireEvent.click(search)
+    expect(b.controls.state.getSnapshot().searchRequest).toBe(0)
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+    expect(b.controls.state.getSnapshot().directoryBusy).toBe(true)
+    expect(screen.queryByRole('button',{ name:t('workspace.add') })).toBeNull()
+    local.actions.setGroupBy('flat')
+    expect(createWorkspaceViewStore().create().getSnapshot().groupBy).toBe('workspace')
+  })
+
   it.each(['workspace', 'flat', 'ungrouped'] as const)('keeps %s recency independent of arrival order and saved manual positions', (mode) => {
     localStorage.clear()
     const preferences = createWorkspaceViewStore().create()

@@ -545,10 +545,18 @@ export interface ConversationContentInputProps {
   placeholder?: string | undefined
   /** Require a selected native Workspace before Hero input; defaults to true. */
   workspaceRequired?: boolean | undefined
+  /** Restrict this occurrence's workspace picker without changing global preferences. */
+  workspaceIds?: readonly WorkspaceId[] | undefined
+  /** Route workspace selection to the embedding owner. */
+  onSelectWorkspace?: ((workspaceId: WorkspaceId) => void | Promise<void>) | undefined
+  /** Hide only the preset selector in this occurrence. */
+  showAgentPreset?: boolean | undefined
 }
 
 /** Workspace selection state passed to the occurrence-selected Hero controls. */
 export interface ConversationHeroControlsInputProps {
+  workspaceIds?: readonly WorkspaceId[] | undefined
+  showAgentPreset?: boolean | undefined
   /** Localized Workspace label, absent until one is selected. */
   workspaceTitle: string | undefined
   workspacePickerOpen: boolean
@@ -621,6 +629,7 @@ export type ComposerAttachmentsProps =
 
 /** Owner share common to blank-session Workspace pickers. */
 export interface EmptyWorkspaceOwnerProps {
+  workspaceIds?: readonly WorkspaceId[] | undefined
   open: boolean
   anchorRef?: RefObject<HTMLElement>
   /** Currently selected Workspace, when available. */
