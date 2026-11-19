@@ -276,7 +276,6 @@ type SessionTreeProps = Pick<
   /** Nest Workspaces under their nearest registered ancestors. */
   nestWorkspaces: boolean
   /** Omit empty projected groups while retaining complete directory ancestry for native drag guards. */
-  hideEmptyGroups: boolean
   /** Explicit persisted group expansion, including descendants in tree mode. */
   groupExpansion: Readonly<Record<string, boolean>>
   /** Persist one Workspace group's expansion. */
@@ -324,7 +323,6 @@ function SessionTree({
   renderFactorySlot,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
-  hideEmptyGroups,
   setSessionOrder, home, t,
   revealSessionId, onSessionRevealed, shortcuts,
 }: SessionTreeProps) {
@@ -383,9 +381,9 @@ function SessionTree({
         currentSessionId: occurrence?.selectedSessionId,
         ungroupedOrder: ungroupedSessionIds,
       })
-      return hideEmptyGroups ? derived.filter(group => group.sessionCount > 0) : derived
+      return derived
     },
-    [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds, hideEmptyGroups, occurrence?.selectedSessionId],
+    [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds, occurrence?.selectedSessionId],
   )
   useEffect(() => {
     for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
@@ -964,7 +962,7 @@ export function WorkspaceBrowser({
   const selectedWorkspaceIds = occurrence?.workspaceIds
   const members = useMemo(() => {
     const scoped = scope === undefined || (scope.status === 'ready' && scope.memberSessionIds === undefined)
-      ? undefined : new Set(scope.status === 'ready' ? scope.memberSessionIds : [])
+      ? undefined : new Set(scope.memberSessionIds ?? [])
     if (selectedWorkspaceIds === undefined) return scoped
     const account = allWorkspaces
       .filter(workspace => selectedWorkspaceIds.includes(workspace.workspaceId))
@@ -1468,11 +1466,20 @@ export function WorkspaceBrowser({
 
       {/* Always-mounted seat keeps the region's flex slot while the list
           itself is wide-only. */}
-      <div className={css.listArea}>
-        {wide && (scope !== undefined && scope.status !== 'ready'
-          ? <div className={css.emptyState} role={scope.status === 'error' ? 'alert' : 'status'}>
-            <div>{t(scope.status === 'error' ? 'scope.error' : 'scope.loading')}</div>
-            {scope.status === 'error' && <div>{scope.message}</div>}
+      <div className={css.listArea} aria-busy={scope?.status === 'loading' || undefined}>
+        {wide && scope?.status === 'error' && <div className={css.searchStatus} role="alert">
+          <span>{scope.message}</span>
+          {occurrence?.onRetry !== undefined && <Button variant="ghost" size="sm" onClick={occurrence.onRetry}>{t('scope.retry')}</Button>}
+        </div>}
+        {wide && !(scope?.status === 'error' && (scope.memberSessionIds?.length ?? 0) === 0
+          && (groupBy === 'flat' || scopedWorkspaces.length === 0)) && (scope?.status === 'loading' && (scope.memberSessionIds?.length ?? 0) === 0
+          ? <div aria-busy="true" aria-label={t('scope.loading')}>
+            {[0, 1].map(i => <div key={i} className={css.skeletonRow} aria-hidden="true">
+              <span className={css.skeletonDot} />
+              <span className={css.skeletonBars}>
+                <span className={css.skeletonBar} /><span className={clsx(css.skeletonBar, css.skeletonBarWide)} />
+              </span>
+            </div>)}
           </div>
           : normalizedQuery !== ''
             ? (
@@ -1525,7 +1532,6 @@ export function WorkspaceBrowser({
                   ungroupedSessionIds={scopedIds(orderedUngroupedSessionIds)}
                   workspaceReady={workspaceReady}
                   nestWorkspaces={groupBy === 'workspace-tree'}
-                  hideEmptyGroups={!occurrence && members !== undefined}
                   animationResetKey={`${groupBy}/${orderBy}/${archivedFilter}`}
                   groupExpansion={groupExpansion}
                   setGroupExpanded={actions.setGroupExpanded}

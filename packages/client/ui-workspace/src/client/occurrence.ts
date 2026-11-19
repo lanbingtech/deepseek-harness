@@ -10,6 +10,8 @@ export interface WorkspaceBrowserOccurrence {
   selectedSessionId: SessionId | null
   onSelect: (id: SessionId) => void
   onNew?: ((workspaceId?: WorkspaceId) => void) | undefined
+  /** Retry occurrence-owned membership resolution. */
+  onRetry?: (() => void) | undefined
   onFork: (id: SessionId) => void
 }
 

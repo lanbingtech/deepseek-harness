@@ -14,6 +14,15 @@ import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/cli
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotFactoryMap {
+    /** Native sidebar appearance with explicit occurrence-owned creation. */
+    'sidebar.session-surface': {
+      scope: 'root'
+      props: { onNew?: (() => void) | undefined; disabled?: boolean | undefined; busy?: boolean | undefined }
+      locale: 'sidebar'
+      slots: { content: { scope: 'root' } }
+    }
+  }
   interface SlotMap {
     /** Non-interactive notification inside the collapsed sidebar expand button. */
     'sidebar.toggle.badge': { kind: 'single'; scope: 'root'; owner: Record<never, never> }

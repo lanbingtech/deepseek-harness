@@ -10,8 +10,8 @@ export type WorkspaceBrowserScopeSnapshot = {
   readonly revision: string | number
 } & (
   | { readonly status: 'ready'; readonly memberSessionIds: readonly SessionId[] | undefined }
-  | { readonly status: 'loading' }
-  | { readonly status: 'error'; readonly message: string }
+  | { readonly status: 'loading'; readonly memberSessionIds?: readonly SessionId[] }
+  | { readonly status: 'error'; readonly message: string; readonly memberSessionIds?: readonly SessionId[] }
 )
 
 /** One effect-owned observable; lower numeric priority wins, with earlier registration breaking ties. */

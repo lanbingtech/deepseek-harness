@@ -161,6 +161,37 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
 }
 
 describe('WorkspaceBrowser', () => {
+  it('preserves registered workspace inventory under main session membership filters', () => {
+    const scope = { id: 'main', revision: 1, status: 'ready' as const, memberSessionIds: [] }
+    mount({ useBrowserScope: selector => selector(scope),
+      useWorkspaces: hook(workspaceState([workspace('knowledge-center', [])])) })
+    expect(screen.getByText('knowledge-center')).toBeTruthy()
+  })
+
+  it('retains registered workspaces on an initial metadata error', () => {
+    const scope = { id: 'main', revision: 1, status: 'error' as const, message: 'Retry membership' }
+    mount({ useBrowserScope: hook(scope), useWorkspaces: hook(workspaceState([workspace('knowledge-center', [])])) })
+    expect(screen.getByText('knowledge-center')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toBe('Retry membership')
+  })
+
+  it('retains known sessions on metadata errors and exposes local retry', () => {
+    const onRetry = vi.fn()
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id: 'qa', revision: 2, status: 'error', message: 'metadata unavailable', memberSessionIds: [sid('known')] }, selectedSessionId: sid('known'), onSelect: vi.fn(), onFork: vi.fn(), onRetry }
+    mount({ useSessions: hook(sessionState([summary('known', 1), summary('unknown', 2)])), useWorkspaces: hook(workspaceState([workspace('center', ['known', 'unknown'])])) }, () => null, occurrence)
+    expect(screen.getByText('known')).toBeTruthy()
+    expect(screen.queryByText('unknown')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: t('scope.retry') }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('shows the native list skeleton while initial membership is pending', () => {
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id: 'qa', revision: 1, status: 'loading' }, selectedSessionId: null, onSelect: vi.fn(), onFork: vi.fn() }
+    const b = mount({}, () => null, occurrence)
+    expect(b.view.container.querySelector('[aria-busy="true"]')).toBeTruthy()
+    expect(screen.queryByText(t('scope.loading'))).toBeNull()
+  })
+
   it.each(['workspace-tree', 'flat'] as const)('shows the current business blank in %s without mainView retention', (mode) => {
     const local = createWorkspaceViewStore(true).create()
     local.actions.setGroupBy(mode)
@@ -2803,7 +2834,8 @@ describe('native scoped search lifecycle', () => {
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'needle' } })
       await act(async () => { await vi.advanceTimersByTimeAsync(250) })
       expect(calls).toHaveLength(0)
-      expect(screen.getByRole('status').textContent).toBe(t('scope.loading'))
+      expect(screen.getByLabelText(t('scope.loading')).getAttribute('aria-busy')).toBe('true')
+      expect(screen.queryByText(t('scope.loading'))).toBeNull()
       rerender(b, { useBrowserScope: hook({ id: 'one', revision: 1, status: 'ready' as const, memberSessionIds: [sid('one')] }) })
       await act(async () => { await vi.advanceTimersByTimeAsync(250) })
       expect(calls[0]?.ids).toEqual([sid('one')])
@@ -2848,7 +2880,7 @@ describe('native scoped title search', () => {
 
 
 describe('native scoped workspace ancestry', () => {
-  it('retains a hidden directory parent when guarding workspace-tree drag boundaries', () => {
+  it('retains registered directory parents when guarding workspace-tree drag boundaries', () => {
     const insertWorkspaceBefore = vi.fn(async () => {})
     const b = mount({
       useSessions: hook(sessionState([summary('foreign', 3), summary('child-member', 2), summary('outside-member', 1)])),
@@ -2861,7 +2893,7 @@ describe('native scoped workspace ancestry', () => {
       insertWorkspaceBefore,
     })
     act(() => { b.store.actions.setGroupBy('workspace-tree') })
-    expect(screen.queryByText('hidden-parent')).toBeNull()
+    expect(screen.getByText('hidden-parent')).toBeTruthy()
     const child = screen.getByText('visible-child').closest('[role="treeitem"]') as HTMLElement
     const outside = screen.getByText('outside').closest('[role="treeitem"]') as HTMLElement
     fireEvent.dragStart(child, { dataTransfer: dragData() })

@@ -246,3 +246,5 @@ None.
 ## Embedded browser
 
 The root Factory `workspace.browser` renders the complete native browser. Its owner supplies `scope`, optional `workspaceIds`, `selectedSessionId`, `onSelect`, `onNew(workspaceId?)`, and `onFork`. Membership is projected before search and display. Explicit workspace ids retain empty workspace groups, so a new conversation can be created in an empty group. Each occurrence starts in workspace-tree mode with its own in-memory view preferences and search state. Selection and branching use the owner callbacks; they never navigate the main Conversation. Workspace records, pinning and archival remain shared native entities. The embedded surface offers existing workspaces rather than adding directories.
+
+Workspace browser scope loading and errors retain explicitly known member IDs, while unresolved IDs remain hidden. Occurrences may supply `onRetry` for membership recovery. Session membership filters preserve the registered workspace inventory.

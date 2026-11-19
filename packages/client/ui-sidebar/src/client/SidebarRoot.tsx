@@ -19,24 +19,18 @@
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutlineMedium, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, isDarwinDesktop, ShortcutKeys, Tooltip,
+  FishLogo, IconPanelLeftOutlineRegular, isDarwinDesktop, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
   SidebarPanelMetadata, SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps,
 } from './contract/slots.ts'
+import { useSidebarScrollbars } from './useSidebarScrollbars.ts'
+import { NewSessionAction } from './NewSessionAction.tsx'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
 const COLLAPSE_SETTLE_MS = 150
-
-/**
- * How long the column's scrollbars stay drawn after the pointer leaves it.
- * The bar is a pointer affordance here, and hiding it on the leave event
- * itself makes it blink out while the pointer is only crossing the column's
- * edge — on the way to the conversation, or around a portalled menu.
- */
-const SCROLLBAR_LINGER_MS = 2000
 
 /** Format complete-build metadata for the local brand badge. */
 function localBuildVersion(): string | undefined {
@@ -131,48 +125,7 @@ export function SidebarRoot({
   const everWide = useRef(!collapsed)
   if (!collapsed) everWide.current = true
 
-  // Scrollbars in the column follow the pointer (.quietBars rebinds them
-  // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
-  // leaves. A pointer that returns within that window cancels the pending
-  // hide rather than restarting from a hidden bar.
-  const column = useRef<HTMLDivElement>(null)
-  const [pointerInside, setPointerInside] = useState(false)
-  const lingerTimer = useRef<number | undefined>(undefined)
-  const armLinger = (): void => {
-    if (lingerTimer.current !== undefined) return
-    lingerTimer.current = window.setTimeout(() => {
-      lingerTimer.current = undefined
-      setPointerInside(false)
-    }, SCROLLBAR_LINGER_MS)
-  }
-  const cancelLinger = (): void => {
-    window.clearTimeout(lingerTimer.current)
-    lingerTimer.current = undefined
-  }
-  // Leaving is decided by the column's BOX, not by DOM containment, and only
-  // while the bars are drawn. ui-settings renders its full-viewport panel as a
-  // fixed-position DESCENDANT of this column, so a pointer moved onto that
-  // panel — or onto the conversation once it closes — fires no `pointerleave`
-  // here, and the bars would stay drawn over a column nobody is pointing at.
-  // The element's own leave stays as the one signal geometry cannot give: a
-  // pointer that leaves the window emits no further moves.
-  useEffect(() => {
-    if (!pointerInside) return
-    const onMove = (event: PointerEvent): void => {
-      const rect = column.current?.getBoundingClientRect()
-      /* v8 ignore next -- the listener only exists while the column is mounted and revealed. */
-      if (rect === undefined) return
-      const inside = event.clientX >= rect.left && event.clientX < rect.right
-        && event.clientY >= rect.top && event.clientY < rect.bottom
-      if (inside) cancelLinger()
-      else armLinger()
-    }
-    document.addEventListener('pointermove', onMove)
-    return () => {
-      document.removeEventListener('pointermove', onMove)
-      cancelLinger()
-    }
-  }, [pointerInside])
+  const { column, pointerInside, enter, leave } = useSidebarScrollbars()
 
   const buildVersion = localBuildVersion()
 
@@ -209,11 +162,8 @@ export function SidebarRoot({
         collapsed && wide && css.fading, !pointerInside && css.quietBars,
       )}
       style={wide ? { width: collapsed ? lastWideWidth.current : width } : undefined}
-      onPointerEnter={() => {
-        cancelLinger()
-        setPointerInside(true)
-      }}
-      onPointerLeave={() => { armLinger() }}
+      onPointerEnter={enter}
+      onPointerLeave={leave}
     >
       {/* macOS hiddenInset titlebar: the strip shares the row with the
           traffic lights and keeps the toggle at the sidebar's top-right. */}
@@ -263,25 +213,8 @@ export function SidebarRoot({
       {hasHeaderControls && renderSlot('sidebar.header.control', { activeView: view, wide, expandSidebar: () => { if (collapsed) toggleSidebar() } })}
 
       {/* The label fades before the hover/focus shortcut, including on translucent backgrounds. */}
-      {conversation && <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
-        <button
-          type="button"
-          className={css.newSession}
-          aria-label={t('session.new.label')}
-          aria-keyshortcuts={newShortcut?.aria}
-          onClick={() => { startSession() }}
-        >
-          <span className={css.newSessionLabelMask}><span className={css.newSessionContent}>
-            {wide
-              ? <IconNewChatOutlineMedium size={14} />
-              : <IconNewChatOutlineRegular size={windowsTitlebar ? 16 : 18} />}
-            {wide && <span className={clsx(css.newSessionLabel, css.wide)}>{t('session.new')}</span>}
-          </span></span>
-          {wide && newShortcut !== undefined && newShortcut.keys.length > 0 && <span className={css.newSessionShortcut} aria-hidden="true">
-            <ShortcutKeys keys={newShortcut.keys} />
-          </span>}
-        </button>
-      </Tooltip>}
+      {conversation && <NewSessionAction onNew={() => { startSession() }} label={t('session.new.label')} text={t('session.new')}
+        wide={wide} windowsTitlebar={windowsTitlebar} captionTooltipSide={captionTooltipSide} shortcut={newShortcut} />}
 
       {conversation && panels.length > 0 && (
         <nav className={css.panelList} aria-label={t('panels.label')}>
