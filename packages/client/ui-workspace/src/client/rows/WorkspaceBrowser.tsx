@@ -380,11 +380,12 @@ function SessionTree({
     () => {
       const derived = deriveGroups(list, workspaces, rowState, statuses, {
         expandedGroups,
+        currentSessionId: occurrence?.selectedSessionId,
         ungroupedOrder: ungroupedSessionIds,
       })
       return hideEmptyGroups ? derived.filter(group => group.sessionCount > 0) : derived
     },
-    [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds, hideEmptyGroups],
+    [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds, hideEmptyGroups, occurrence?.selectedSessionId],
   )
   useEffect(() => {
     for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
@@ -719,8 +720,8 @@ function FlatList({
   const panelActive = usePanelInfo(info => info.activePanelId !== null)
   const statuses = useSessionStatus(s => s)
   const rows = useMemo(
-    () => deriveFlat(list, sessionIds, rowState, statuses),
-    [list, sessionIds, rowState, statuses],
+    () => deriveFlat(list, sessionIds, rowState, statuses, occurrence?.selectedSessionId),
+    [list, sessionIds, rowState, statuses, occurrence?.selectedSessionId],
   )
   const [drag, setDrag] = useState<DragState | null>(null)
   const dropCommitted = useRef(false)
@@ -1039,7 +1040,9 @@ export function WorkspaceBrowser({
     () => ({ ...orderState, archivedFilter }),
     [orderState, archivedFilter],
   )
-  const flatMemberIds = useMemo(() => sessionMemberIds(list), [list])
+  const flatMemberIds = useMemo(
+    () => sessionMemberIds(list, occurrence?.selectedSessionId), [list, occurrence?.selectedSessionId],
+  )
   const orderedWorkspaces = useMemo(() => workspaces.map((workspace) => {
     const memberIds = workspace.sessionIds
     const baseOrder = orderBy === 'updated'

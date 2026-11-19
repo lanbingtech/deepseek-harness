@@ -35,7 +35,9 @@ export function owningGroupKey(
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
 type SessionStatuses = SessionStatusSnapshot
 
-function mainSessionId(list: SessionListState): SessionId | undefined {
+/** Explicit null means no selection; omission preserves the main browser's retention source. */
+function selectedSessionId(list: SessionListState, selected?: SessionId | null): SessionId | undefined {
+  if (selected !== undefined) return selected ?? undefined
   return Object.values(list.byId)
     .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
 }
@@ -108,6 +110,8 @@ export interface SearchResultSet {
 
 /** Viewing state consumed by the derivation. */
 export interface TreeView {
+  /** Current Session of this browser; null clears selection, omission follows the main view. */
+  currentSessionId?: SessionId | null | undefined
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
@@ -337,8 +341,9 @@ function groupByWorkspace(
   archived: ReadonlySet<SessionId>,
   archivedFilter: ArchivedFilter,
   ungroupedOrder: readonly string[] | undefined,
+  currentSession?: SessionId | null,
 ): Group[] {
-  const current = mainSessionId(list)
+  const current = selectedSessionId(list, currentSession)
   const groups: Group[] = []
   const accounted = new Set<SessionId>()
   for (const workspace of workspaces) {
@@ -435,7 +440,7 @@ export function sessionNode(
  * excluded except for the selected provisional New Session row; archived
  * sessions keep their slots and appear per the archived filter. Content
  * search lives outside this derivation (see {@link deriveSearchResults}).
- * @param list - sessions list snapshot (`mainView` retention feeds containsCurrent).
+ * @param list - sessions list snapshot (`mainView` retention is the default selection source).
  * @param workspaces - real Workspaces in Host group order with caller-projected Session order.
  * @param rowState - registry-global pin and archive sets plus the archived filter.
  * @param statuses - unified UI status by Session.
@@ -452,12 +457,12 @@ export function deriveGroups(
   const archived = new Set(rowState.archivedSessionIds)
   const pinned = new Set(rowState.pinnedSessionIds)
   const expandedGroups = new Set(view.expandedGroups)
-  const current = mainSessionId(list)
+  const current = selectedSessionId(list, view.currentSessionId)
   const currentGroup = current === undefined
     ? undefined
     : owningGroupKey(workspaces, current)
   const groups: GroupNode[] = []
-  for (const g of groupByWorkspace(list, workspaces, archived, rowState.archivedFilter, view.ungroupedOrder)) {
+  for (const g of groupByWorkspace(list, workspaces, archived, rowState.archivedFilter, view.ungroupedOrder, view.currentSessionId)) {
     const expanded = expandedGroups.has(g.key)
     groups.push({
       key: g.key,
@@ -480,10 +485,11 @@ export function deriveGroups(
 /**
  * Select complete flat-list membership, independently of archive visibility.
  * @param list - sessions list snapshot.
+ * @param currentSession - occurrence selection; null selects none, omission follows the main view.
  * @returns known ordinary Session ids, including archives and only the current blank.
  */
-export function sessionMemberIds(list: SessionListState): SessionId[] {
-  return visibleSessionIds(list, [], 'show')
+export function sessionMemberIds(list: SessionListState, currentSession?: SessionId | null): SessionId[] {
+  return visibleSessionIds(list, [], 'show', currentSession)
 }
 
 /**
@@ -491,15 +497,17 @@ export function sessionMemberIds(list: SessionListState): SessionId[] {
  * @param list - sessions list snapshot.
  * @param archivedSessionIds - registry-global archive set.
  * @param archivedFilter - archived-row visibility choice.
+ * @param currentSession - occurrence selection; null selects none, omission follows the main view.
  * @returns known visible Session ids in list order, including ordinary forks and only the current blank.
  */
 export function visibleSessionIds(
   list: SessionListState,
   archivedSessionIds: readonly SessionId[],
   archivedFilter: ArchivedFilter,
+  currentSession?: SessionId | null,
 ): SessionId[] {
   const archived = new Set(archivedSessionIds)
-  const current = mainSessionId(list)
+  const current = selectedSessionId(list, currentSession)
   return list.ids.filter((id) => {
     const s = list.byId[id]
     return s !== undefined && sessionVisible(s, current, archived, archivedFilter)
@@ -513,6 +521,7 @@ export function visibleSessionIds(
  * @param sessionIds - complete account members in the selected order, including hidden archives.
  * @param rowState - registry-global pin and archive sets plus the archived filter.
  * @param statuses - unified UI status by Session.
+ * @param currentSession - occurrence selection; null selects none, omission follows the main view.
  * @returns flat rows in sectioned order with current status indicators.
  */
 export function deriveFlat(
@@ -520,10 +529,11 @@ export function deriveFlat(
   sessionIds: readonly SessionId[],
   rowState: SessionRowState,
   statuses: SessionStatuses,
+  currentSession?: SessionId | null,
 ): SessionNode[] {
   const archived = new Set(rowState.archivedSessionIds)
   const pinned = new Set(rowState.pinnedSessionIds)
-  const current = mainSessionId(list)
+  const current = selectedSessionId(list, currentSession)
   const members = sessionIds.flatMap((id) => {
     const session = list.byId[id]
     return session !== undefined && sessionVisible(session, current, archived, rowState.archivedFilter)
@@ -561,7 +571,7 @@ export function deriveSearchResults(
   const q = query.trim().toLowerCase()
   if (q === '') return { items: [], hasMore: false }
   const archived = new Set(archivedSessionIds)
-  const current = mainSessionId(list)
+  const current = selectedSessionId(list)
 
   const workspaceBySession = new Map<SessionId, string>()
   for (const workspace of workspaces) {

@@ -74,6 +74,28 @@ describe('owningGroupKey', () => {
 })
 
 describe('Session ordering', () => {
+  it('shows the occurrence-selected blank without changing main retention or admitting other blank drafts', () => {
+    const sessions = withMain(list(
+      { ...summary('main', 3), blank: true },
+      { ...summary('business', 2), blank: true },
+      { ...summary('other-draft', 1), blank: true },
+    ), sid('main'))
+    const workspaces = [workspace('alpha', ['main', 'business', 'other-draft'])]
+    const businessView = { ...view(['alpha']), currentSessionId: sid('business') }
+    expect(deriveGroups(sessions, workspaces, noRows, noAttention, businessView)[0]?.sessions.map(row => row.id))
+      .toEqual([sid('business')])
+    expect(deriveFlat(sessions, sessions.ids, noRows, noAttention, sid('business')).map(row => row.id))
+      .toEqual([sid('business')])
+    expect(sessionMemberIds(sessions, sid('business'))).toEqual([sid('business')])
+    expect(visibleSessionIds(sessions, [], 'show', sid('business'))).toEqual([sid('business')])
+    expect(deriveGroups(sessions, workspaces, noRows, noAttention, view(['alpha']))[0]?.sessions.map(row => row.id))
+      .toEqual([sid('main')])
+    expect(sessionMemberIds(sessions)).toEqual([sid('main')])
+    expect(sessionMemberIds(sessions, null)).toEqual([])
+    expect(sessions.byId[sid('business')]?.retainedBy).toEqual({})
+    expect(sessions.byId[sid('main')]?.retainedBy).toEqual({ mainView: 1 })
+  })
+
   it.each(['workspace', 'ungrouped', 'flat'] as const)('keeps the current New Session before pins in %s', (mode) => {
     const sessions = withMain(list(
       summary('pin', 30),

@@ -161,6 +161,27 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
 }
 
 describe('WorkspaceBrowser', () => {
+  it.each(['workspace-tree', 'flat'] as const)('shows the current business blank in %s without mainView retention', (mode) => {
+    const local = createWorkspaceViewStore(true).create()
+    local.actions.setGroupBy(mode)
+    const occurrence: WorkspaceBrowserOccurrence = {
+      scope: { id: 'business', revision: 1, status: 'ready', memberSessionIds: [sid('qa')] },
+      workspaceIds: [wid('center')], selectedSessionId: sid('qa'),
+      onSelect: vi.fn(), onNew: vi.fn(), onFork: vi.fn(),
+    }
+    const catalog = sessionState([
+      summary('qa', 2, { blank: true }), summary('main', 3, { blank: true }),
+    ], { main: sid('main') })
+    const b = mount({
+      useStore: bindSnapshotSelector(local), actions: local.actions,
+      useSessions: hook(catalog), useWorkspaces: hook(workspaceState([workspace('center', ['qa'])])),
+    }, () => null, occurrence)
+    expect(b.view.container.querySelector('[data-row-key="session:qa"]')?.getAttribute('aria-selected')).toBe('true')
+    expect(b.view.container.querySelector('[data-row-key="session:main"]')).toBeNull()
+    expect(catalog.byId[sid('qa')]?.retainedBy).toEqual({})
+    expect(catalog.byId[sid('main')]?.retainedBy).toEqual({ mainView: 1 })
+  })
+
   it('keeps an embedded read-only browser from creating or navigating main sessions', () => {
     const occurrence: WorkspaceBrowserOccurrence={ scope:{ id:'empty',revision:1,status:'ready',memberSessionIds:[] },workspaceIds:[wid('center')],selectedSessionId:null,onSelect:vi.fn(),onFork:vi.fn() }
     const local=createWorkspaceViewStore(true).create()
