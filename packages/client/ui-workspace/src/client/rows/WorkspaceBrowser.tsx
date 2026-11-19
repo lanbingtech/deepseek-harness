@@ -30,17 +30,18 @@ import type {
 import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { ArchivedFilter, GroupNode, SessionNode, SessionOrderBy, SessionRowState } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
   pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
 } from '../tree.ts'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
+import { ProjectRowItem, SearchResultItem } from './Rows.tsx'
 import { AnimatedRows } from './AnimatedRows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
+import { SessionRowOutlet } from './SessionRow.tsx'
 import css from './WorkspaceBrowser.module.css'
 
 /**
@@ -255,12 +256,7 @@ type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessionStatus' | 'startSession' | 'open'
   | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
-> & PropsRenderSlots<
-  | 'sidebar.workspaces.session.menu.item'
-  | 'sidebar.workspaces.session.row.action'
-  | 'sidebar.session.row.leading'
-  | 'sidebar.session.row.hover'
-> & {
+> & PropsRenderFactories & {
   shortcuts: readonly import('@deepseek-ai/dsh-client-shortcuts/client').ShortcutCatalogEntry[]
   /** Always-mounted Session list snapshot. */
   list: SessionListState
@@ -324,7 +320,7 @@ function SessionTree({
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo,
   onRenameRequest, onDeleteRequest, onSessionRenameRequest,
-  renderSlot,
+  renderFactorySlot,
   insertWorkspaceBefore,
   nestWorkspaces, groupExpansion, setGroupExpanded,
   hideEmptyGroups,
@@ -628,14 +624,14 @@ function SessionTree({
             },
           }
           return (
-            <SessionNodeItem
+            <SessionRowOutlet
               key={node.id}
               node={node}
               currentId={current}
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
-              renderSlot={renderSlot}
+              renderFactorySlot={renderFactorySlot}
               onReveal={node.id === revealSessionId && group.key === revealGroup
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -696,13 +692,13 @@ function SessionTree({
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, open, onSessionRenameRequest,
   usePanelInfo, setSessionOrder, completeSessionOrders, workspaceReady, animationResetKey,
-  revealSessionId, onSessionRevealed, renderSlot, t,
+  revealSessionId, onSessionRevealed, renderFactorySlot, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessionStatus'
   | 'open'
   | 'onSessionRenameRequest'
-  | 'renderSlot'
+  | 'renderFactorySlot'
   | 'usePanelInfo'
   | 'setSessionOrder'
   | 'completeSessionOrders'
@@ -756,14 +752,14 @@ function FlatList({
           const normalizeHalf = (half: 'before' | 'after'): 'before' | 'after' =>
             node.blank ? 'after' : half
           return (
-            <SessionNodeItem
+            <SessionRowOutlet
               key={node.id}
               node={node}
               currentId={currentId}
               now={now}
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
-              renderSlot={renderSlot}
+              renderFactorySlot={renderFactorySlot}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -946,7 +942,7 @@ export function WorkspaceBrowser({
   requestAddWorkspace,
   closeAddWorkspace,
   setDirectoryBusy,
-  renderSlot,
+  renderSlot, renderFactorySlot,
   t,
 }: WorkspaceBrowserProps) {
   const scope = useBrowserScope(value => value)
@@ -1476,7 +1472,7 @@ export function WorkspaceBrowser({
                   useSessionStatus={useSessionStatus}
                   open={guardedOpen}
                   onSessionRenameRequest={requestSessionRename}
-                  renderSlot={renderSlot}
+                  renderFactorySlot={renderFactorySlot}
                   setSessionOrder={saveSessionOrder}
                   completeSessionOrders={activeSessionOrders}
                   revealSessionId={revealSessionId}
@@ -1491,7 +1487,7 @@ export function WorkspaceBrowser({
                   shortcuts={shortcuts}
                   useSessionStatus={useSessionStatus}
                   onSessionRenameRequest={requestSessionRename}
-                  renderSlot={renderSlot}
+                  renderFactorySlot={renderFactorySlot}
                   workspaces={scopedWorkspaces}
                   ungroupedSessionIds={scopedIds(orderedUngroupedSessionIds)}
                   workspaceReady={workspaceReady}

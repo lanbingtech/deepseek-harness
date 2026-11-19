@@ -6,7 +6,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-嵌入展示可向 `conversation.chat.content` 传入 `onOpenFile(path, options)`，由调用方打开文件预览，无需挂载主聊天 Sidebar；省略时保留原有 Sidebar 导航。
+嵌入展示可向 `conversation.chat.content` 传入 `onOpenFile(path, options)`，由调用方打开文件预览，无需挂载主聊天 Sidebar；省略时保留原有 Sidebar 导航。 可选的 `onForkAt(seq)` 将交互式分支操作交给当前视图；省略时保留默认工作区导航，readonly 模式仍隐藏分支操作。
 
 桌面端产品事件使用可选的[产品埋点服务](../product-analytics/README.zh.md)，不包含普通 Web 交互。
 

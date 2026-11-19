@@ -208,6 +208,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       scope: 'session'
       owner: { view?: string }
     }
+    /** Session draft writer mounted independently of the selected View. */
+    'conversation.draft.persistence': { kind: 'single'; scope: 'session' }
     /** Resident navigation container, including when no Session is selected. */
     'conversation.header': { kind: 'single'; scope: 'session-maybe' }
     /** Strict per-Session title, actions, and View navigation. */
@@ -305,6 +307,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       props: ConversationContentInputProps
       children: {
         'conversation.session': { kind: 'single'; scope: 'session' }
+        'conversation.draft.persistence': { kind: 'single'; scope: 'session' }
         'conversation.composer': { kind: 'chain'; scope: 'session' }
         'conversation.composer.bar': { kind: 'single'; scope: 'session-maybe' }
         'conversation.input.dock': { kind: 'list'; scope: 'session' }
@@ -317,6 +320,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       locale: 'conversation'
       slots: {
         views: { scope: 'session' }
+        hero: { scope: 'root' }
+        heroControls: { scope: 'session-maybe'; props: ConversationHeroControlsInputProps }
         widthControls: { scope: 'root'; props: ConversationWidthControlsInputProps }
       }
     }
@@ -416,7 +421,7 @@ export interface ConversationSessionInjected {
     readonly conversationViews: ObservableSnapshot<readonly ViewTab[]>
     readonly inspectCall: ObservableSnapshot<ConvViewOwnerProps['inspectCall']>
   }
-  /** Bind input draft persistence to the Session-owned store instance. */
+  /** Lease a draft writer; identical callbacks share writes and each disposer releases only its binding. */
   bindDraftPersistence: (write: (draft: DraftSnapshot) => void) => () => void
   /** Select and activate one View while addressing an opaque focus request to it. */
   openView: (view: string, focus: string) => void
@@ -536,7 +541,33 @@ export interface ConversationContentInputProps {
   variant: 'main' | 'embedded'
   phase: 'settling' | 'hero' | 'active'
   hero: boolean
+  /** Localized input hint; blocked and missing-Workspace reasons take precedence. */
+  placeholder?: string | undefined
+  /** Require a selected native Workspace before Hero input; defaults to true. */
+  workspaceRequired?: boolean | undefined
 }
+
+/** Workspace selection state passed to the occurrence-selected Hero controls. */
+export interface ConversationHeroControlsInputProps {
+  /** Localized Workspace label, absent until one is selected. */
+  workspaceTitle: string | undefined
+  workspacePickerOpen: boolean
+  selectedWorkspaceId: WorkspaceId | undefined
+  onToggleWorkspacePicker: () => void
+  onPickWorkspace: (workspaceId: WorkspaceId) => void
+  onCloseWorkspacePicker: () => void
+}
+
+/** Full props of occurrence-selected blank-session chrome. */
+export type ConversationHeroProps = FactoryLocalComponentPropsOf<'conversation.content', 'hero'>
+
+/** Full props of occurrence-selected blank-session controls. */
+export type ConversationHeroControlsProps = FactoryLocalComponentPropsOf<'conversation.content', 'heroControls'>
+
+/** Full props of the Session draft writer. */
+export type ConversationDraftPersistenceProps = PropsRuntime<'conversation.draft.persistence'>
+  & PropsStore<ConversationStore>
+  & Pick<ConversationSessionInjected, 'bindDraftPersistence'>
 
 /** Values passed from shared content to its occurrence-selected width controls. */
 export interface ConversationWidthControlsInputProps {

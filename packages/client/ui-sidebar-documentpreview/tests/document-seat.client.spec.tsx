@@ -138,6 +138,7 @@ describe('document extension seat', () => {
     h.read.mockReturnValueOnce(replacement.promise)
     h.standalone('/reports/report.md')
     await waitFor(() => { expect(h.read.mock.calls.some(call => call[1] === '/reports/report.md')).toBe(true) })
+    if (previousSignal === undefined) throw new Error('Document read did not receive an abort signal')
     expect(previousSignal.aborted).toBe(true)
     expect(h.view.container.querySelector('[data-document-markdown]')?.textContent ?? '').not.toContain('first')
     await act(async () => { replacement.resolve(textPage(1, ['replacement file'], true)) })

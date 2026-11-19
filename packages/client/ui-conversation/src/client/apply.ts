@@ -38,6 +38,7 @@ import { queueDockEntry } from './queue/QueueDock.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
 import { ConversationRoot } from './skeleton/ConversationRoot.tsx'
+import { ConversationDraftPersistence } from './skeleton/ConversationDraftPersistence.tsx'
 import { ConversationContent } from './skeleton/ConversationContent.tsx'
 import { ConversationPanel } from './skeleton/ConversationPanel.tsx'
 import { ConversationHeader } from './skeleton/ConversationHeader.tsx'
@@ -340,6 +341,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     locale: NS,
     children: {
       'conversation.session': { kind: 'single', scope: 'session' },
+      'conversation.draft.persistence': { kind: 'single', scope: 'session' },
       'conversation.composer': { kind: 'chain', scope: 'session' },
       'conversation.composer.bar': { kind: 'single', scope: 'session-maybe' },
       'conversation.input.dock': { kind: 'list', scope: 'session' },
@@ -350,6 +352,8 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     },
     slots: {
       views: { scope: 'session' },
+      hero: { scope: 'root' },
+      heroControls: { scope: 'session-maybe' },
       widthControls: { scope: 'root' },
     },
     inject: (sessionId: SessionId | undefined): ConversationInjected => ({
@@ -566,6 +570,14 @@ export function apply(ctx: Context, config: Config = Config({})): void {
     }, ConversationPanel)
     yield registerConversationRoot()
     yield registerConversationContent()
+    yield slots.register({
+      name: 'conversation.draft.persistence',
+      store: conversationStore,
+      inject: (sessionId: SessionId) => ({
+        bindDraftPersistence: (write: Parameters<ConversationSessionInjected['bindDraftPersistence']>[0]) =>
+          inputHub.shell(sessionId).bindDraftPersistence(write),
+      }),
+    }, ConversationDraftPersistence)
     yield registerConversationSession()
     yield registerHeader()
     yield registerSessionHeader()

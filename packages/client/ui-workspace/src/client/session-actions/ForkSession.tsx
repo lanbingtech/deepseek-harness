@@ -10,7 +10,7 @@ import type { ForkSessionInjected, SessionMenuItemProps } from '../contract/slot
  * @returns the row, or nothing when the caller may not fork this Session.
  */
 export function ForkSessionMenuItem({
-  sessionId, useMenuOpenState, useShortcuts, useSessionAccess, forkSession, t,
+  sessionId, onFork, useMenuOpenState, useShortcuts, useSessionAccess, forkSession, t,
 }: SessionMenuItemProps<ForkSessionInjected>) {
   const [, setMenuOpen] = useMenuOpenState()
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'session.fork'))
@@ -22,7 +22,8 @@ export function ForkSessionMenuItem({
       icon={<IconBranchOutlineRegular />}
       onSelect={() => {
         setMenuOpen(false)
-        forkSession(sessionId)
+        const fork = onFork ?? forkSession
+        fork(sessionId)
       }}
     >
       {t('menu.fork')}

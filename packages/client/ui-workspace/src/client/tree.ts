@@ -394,7 +394,16 @@ function runningChildCount(list: SessionListState, parentId: SessionId, statuses
   ) ?? 0
 }
 
-function sessionNode(
+/**
+ * Derive native row facts from the authoritative catalog and UI status.
+ * @param s - the catalog summary.
+ * @param list - catalog and subagent projections.
+ * @param statuses - unified Session UI status.
+ * @param pinned - registry-global pinned identities.
+ * @param archived - registry-global archived identities.
+ * @returns the native row's display facts.
+ */
+export function sessionNode(
   s: SessionSummary,
   list: SessionListState,
   statuses: SessionStatuses,

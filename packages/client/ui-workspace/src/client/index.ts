@@ -5,7 +5,7 @@
  * (`conversation.hero.workspace` — both hero forms). Both read real Host
  * Workspaces through the global useWorkspaces hook, and each declares its
  * own `single` directory-flow child hole for the composed picker package's
- * client half. WorkspaceBrowser additionally declares the two Session row
+ * client half. The shared native row Factory declares the two Session row
  * action lists, and this apply registers the shipped actions — pin, rename,
  * fork, archive, copy ID — into them the way any client plugin would, each
  * with its own behavior, plus the dialogs and the row-action notice into
@@ -47,6 +47,7 @@ import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './sh
 import { WorkspaceBrowserScopeService } from './browser-scope.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
+import { NativeSessionRow } from './rows/SessionRow.tsx'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
@@ -60,6 +61,7 @@ import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, zh, type WorkspaceKey } from './locales.ts'
 
 export type { WorkspaceBrowserScope, WorkspaceBrowserScopeContribution, WorkspaceBrowserScopeSnapshot } from './browser-scope.ts'
+export type { NativeSessionRowOwnerProps } from './rows/SessionRow.tsx'
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
 export type {
   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
@@ -295,21 +297,25 @@ export function apply(ctx: Context): void {
   })
   // Each registration declares its owned children in the same call; slot
   // injection follows both the owner and declaration HMR lifetimes.
+  ctx.slots.registerFactory({
+    name: 'workspace.session-row', scope: 'root', locale: NS,
+    inject: () => ({ requestSessionRename, notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) } }),
+    children: {
+      // Every occurrence binds its own menu-open state into the entries.
+      'sidebar.workspaces.session.menu.item': {
+        kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
+      },
+      'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
+      'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+      'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
+    },
+  }, NativeSessionRow)
   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
     {
       name: 'sidebar.workspaces',
       children: {
         'sidebar.workspaces.header': { kind: 'list', scope: 'root' },
         'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
-        // Every row entry reads the menu's open state through a hook bound
-        // from the row's render occurrence (the owner passes the state pair
-        // as hookContext).
-        'sidebar.workspaces.session.menu.item': {
-          kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
-        },
-        'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
-        'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
-        'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
       },
       store: viewStore,
       inject: browserInjected,
@@ -318,7 +324,7 @@ export function apply(ctx: Context): void {
     WorkspaceBrowser,
   ))
   // The shipped row actions take the same route as a plugin's: `slots.inject`
-  // waits for the browser registration above to declare each list, and the
+  // waits for the shared row Factory to declare each list, and the
   // entries leave with it. Explicit orders leave room for plugin entries.
   ctx.slots.inject('sidebar.workspaces.session.menu.item', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'pin', order: 100, locale: NS, inject: pinInjected }, PinSessionMenuItem)

@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import { MarkdownBody, MarkdownContent, type MarkdownBodyProps } from '../src/client/markdown/MarkdownBody.tsx'
+import { MarkdownBody, MarkdownContent, type MarkdownBodyProps, type MarkdownContentProps } from '../src/client/markdown/MarkdownBody.tsx'
 import { en, zh } from '../src/client/markdown/locales.ts'
 import type { DocumentContent } from '../src/client/document/contract.ts'
 
@@ -25,7 +25,7 @@ function props(value: DocumentContent, t: MarkdownBodyProps['t'] = makeTranslate
   return {
     resourceAddress: 'dsh-resource://file/session/markdown/notes.md', content: value, wrap: false, t,
     renderSlotChain: (_name, _owner, options) => options?.fallback,
-    renderFactorySlot: (_name, input) => <MarkdownContent {...input} t={t} />,
+    renderFactorySlot: (_name, input) => <MarkdownContent {...input as Omit<MarkdownContentProps, 't'>} t={t} />,
     useResource: () => ({
       status: absolutePath === undefined ? 'loading' : 'live',
       value: absolutePath === undefined ? undefined : { absolutePath, version: 'v1' },

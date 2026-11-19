@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { FactoryComponentPropsOf, GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -17,6 +17,7 @@ import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../src/clie
 import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
+import { NativeSessionRow, type NativeSessionRowOwnerProps } from '../src/client/rows/SessionRow.tsx'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
@@ -104,7 +105,7 @@ const renderDirectoryFlowOnly: WorkspaceBrowserProps['renderSlot'] = (name: stri
     ? <div data-testid="directory-flow" />
     : null
 
-function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
+function mount(overrides: Partial<WorkspaceBrowserProps> = {}, renderRowSlot: FactoryComponentPropsOf<'workspace.session-row'>['renderSlot'] = () => null) {
   const controls = createWorkspaceShortcutControls()
   const store = createWorkspaceViewStore().create()
   const props: WorkspaceBrowserProps = {
@@ -139,6 +140,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useBrowserScope: selector => selector(undefined),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
+    renderFactorySlot: (_name: string, owner: object) => <NativeSessionRow {...props} {...owner as NativeSessionRowOwnerProps}
+      renderSlot={renderRowSlot} __renders={undefined} useFactorySlot={() => { throw new Error('No local row slot') }} />,
     t,
     ...overrides,
   }
@@ -730,7 +733,7 @@ describe('WorkspaceBrowser', () => {
 
   it('renders both Session row lists for every visible row in the grouped tree and the flat list', () => {
     const rendered = vi.fn()
-    const renderSlot: WorkspaceBrowserProps['renderSlot'] = (name: string, owner: object) => {
+    const renderSlot = (name: string, owner: object) => {
       rendered(name, owner)
       return null
     }
@@ -738,10 +741,10 @@ describe('WorkspaceBrowser', () => {
       useSessions: hook(sessionState([summary('alpha-s', 1)])),
       useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
       renderSlot,
-    })
+    }, renderSlot)
     expect(rendered).not.toHaveBeenCalledWith('sidebar.workspaces.session.menu.item', expect.anything())
     fireEvent.click(screen.getByText('alpha'))
-    const owner = { sessionId: sid('alpha-s'), displayTitle: 'alpha-s' }
+    const owner = { sessionId: sid('alpha-s'), displayTitle: 'alpha-s', onFork: undefined }
     expect(rendered).toHaveBeenCalledWith('sidebar.workspaces.session.menu.item', owner)
     expect(rendered).toHaveBeenCalledWith('sidebar.workspaces.session.row.action', owner)
     rendered.mockClear()
@@ -2789,7 +2792,7 @@ describe('native scoped workspace ancestry', () => {
       useBrowserScope: hook({ id: 'member', revision: 1, status: 'ready' as const, memberSessionIds: [sid('child-member'), sid('outside-member')] }),
       insertWorkspaceBefore,
     })
-    act(() => b.store.actions.setGroupBy('workspace-tree'))
+    act(() => { b.store.actions.setGroupBy('workspace-tree') })
     expect(screen.queryByText('hidden-parent')).toBeNull()
     const child = screen.getByText('visible-child').closest('[role="treeitem"]') as HTMLElement
     const outside = screen.getByText('outside').closest('[role="treeitem"]') as HTMLElement

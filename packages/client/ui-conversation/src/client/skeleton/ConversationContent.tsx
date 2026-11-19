@@ -2,12 +2,45 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
-import type { ConversationContentProps, ConversationViewsProps, InputZone } from '../contract/slots.ts'
+import type {
+  ConversationContentProps, ConversationHeroProps, ConversationHeroControlsProps, ConversationViewsProps, InputZone,
+} from '../contract/slots.ts'
 import { HeroShell, WorkspaceChip, workspaceLabel } from './EmptyHero.tsx'
 import css from './ConversationRoot.module.css'
 
 function ConversationSessionView({ renderSlot }: ConversationViewsProps) {
   return renderSlot('conversation.session', {})
+}
+
+function DefaultConversationHero({ t, renderSlot }: ConversationHeroProps) {
+  return <HeroShell t={t} renderSlot={renderSlot} />
+}
+
+function DefaultConversationHeroControls({
+  sessionId, workspaceTitle, workspacePickerOpen, selectedWorkspaceId,
+  onToggleWorkspacePicker, onPickWorkspace, onCloseWorkspacePicker, renderSlot, t,
+}: ConversationHeroControlsProps) {
+  const pickerAnchor = useRef<HTMLButtonElement>(null)
+  return (
+    <div className={css.heroWorkspaceRow}>
+      <WorkspaceChip
+        buttonRef={pickerAnchor}
+        label={workspaceTitle}
+        menuOpen={workspacePickerOpen}
+        onClick={onToggleWorkspacePicker}
+        t={t}
+      />
+      {renderSlot('conversation.hero.workspace', {
+        open: workspacePickerOpen,
+        anchorRef: pickerAnchor,
+        selectedId: selectedWorkspaceId,
+        onPick: onPickWorkspace,
+        onClose: onCloseWorkspacePicker,
+      })}
+      {renderSlot('conversation.hero.agentPreset', {})}
+      {sessionId === undefined ? null : <div className={css.heroOptions}>{renderSlot('conversation.hero.options', {})}</div>}
+    </div>
+  )
 }
 
 function NoConversationWidthControls() {
@@ -21,12 +54,14 @@ function NoConversationWidthControls() {
  */
 export function ConversationContent(props: ConversationContentProps) {
   const {
-    sessionId, phase, hero, useSession, useSessions, useSessionStatus,
+    sessionId, phase, hero, workspaceRequired = true, placeholder, useSession, useSessions, useSessionStatus,
     useWorkspaces, useInput, useComposerBlock, renderSlot, renderSlotChain,
     selectWorkspace, t, useFactorySlot,
   } = props
   const session = useSession(snapshot => snapshot)
   const Views = useFactorySlot('views', ConversationSessionView)
+  const Hero = useFactorySlot('hero', DefaultConversationHero)
+  const HeroControls = useFactorySlot('heroControls', DefaultConversationHeroControls)
   const WidthControls = useFactorySlot('widthControls', NoConversationWidthControls)
   const [body, setBody] = useState<HTMLDivElement | null>(null)
   const pendingInteraction = useSessionStatus(snapshot =>
@@ -40,7 +75,6 @@ export function ConversationContent(props: ConversationContentProps) {
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<WorkspaceId | undefined>()
-  const pickerAnchor = useRef<HTMLButtonElement>(null)
 
   // Publishes the two live measurements floating View chrome reads off the
   // scroll body: the seat's height as --dsh-composer-height, so controls clear
@@ -107,39 +141,22 @@ export function ConversationContent(props: ConversationContentProps) {
     ? undefined
     : workspaceDisplayTitle(storedChipTitle, t('workspace.defaultName'))
 
-  const heroWorkspaceRow = (
-    <div className={css.heroWorkspaceRow}>
-      <WorkspaceChip
-        buttonRef={pickerAnchor}
-        label={chipTitle}
-        menuOpen={pickerOpen}
-        onClick={() => { setPickerOpen(open => !open) }}
-        t={t}
-      />
-      {renderSlot('conversation.hero.workspace', {
-        open: pickerOpen,
-        anchorRef: pickerAnchor,
-        selectedId: pendingWorkspaceId ?? sessionWorkspace?.workspaceId,
-        onPick: (workspaceId) => {
-          setPickerOpen(false)
-          setPendingWorkspaceId(workspaceId)
-          void selectWorkspace(workspaceId).catch(() => {
-            setPendingWorkspaceId(current => current === workspaceId ? undefined : current)
-          })
-        },
-        onClose: () => { setPickerOpen(false) },
-      })}
-      {renderSlot('conversation.hero.agentPreset', {})}
-      {sessionId === undefined ? null : <div className={css.heroOptions}>{renderSlot('conversation.hero.options', {})}</div>}
-    </div>
-  )
+  const toggleWorkspacePicker = useCallback(() => { setPickerOpen(open => !open) }, [])
+  const closeWorkspacePicker = useCallback(() => { setPickerOpen(false) }, [])
+  const pickWorkspace = useCallback((workspaceId: WorkspaceId) => {
+    setPickerOpen(false)
+    setPendingWorkspaceId(workspaceId)
+    void selectWorkspace(workspaceId).catch(() => {
+      setPendingWorkspaceId(current => current === workspaceId ? undefined : current)
+    })
+  }, [selectWorkspace])
 
   // The placeholder chip ("Choose workspace") and the Workspace-trigger input travel
   // together: no workspace picked yet (cold start, no session at all), or a
   // blank session whose workspace vanished (deleted from the sidebar). The
   // bar is ONE session-maybe slot rendered unconditionally — inert is a prop,
   // not a different tree, so the textarea DOM survives the transition.
-  const inert = sessionId === undefined || (hero && chipTitle === undefined)
+  const inert = sessionId === undefined || (hero && workspaceRequired && chipTitle === undefined)
   // A raised block is the same inert posture with the blocker's own reason:
   // one disabled textarea, never a second tree. The no-workspace state wins
   // when both hold — picking a workspace is the earlier prerequisite.
@@ -158,13 +175,20 @@ export function ConversationContent(props: ConversationContentProps) {
         // block keeps the model seat live because choosing a model is how the
         // user clears it.
         ? { blocked: composerBlock, placeholder: composerBlock.reason }
-        : hero ? { placeholder: t('placeholder.hero') } : {}),
+        : placeholder !== undefined ? { placeholder } : hero ? { placeholder: t('placeholder.hero') } : {}),
   })
 
   const composerBar = (
     <div className={clsx(css.composerStack, hero && css.composerHero)}>
-      {hero && <HeroShell t={t} renderSlot={renderSlot} />}
-      {hero && heroWorkspaceRow}
+      {hero && <Hero />}
+      {hero && <HeroControls
+        workspaceTitle={chipTitle}
+        workspacePickerOpen={pickerOpen}
+        selectedWorkspaceId={pendingWorkspaceId ?? sessionWorkspace?.workspaceId}
+        onToggleWorkspacePicker={toggleWorkspacePicker}
+        onPickWorkspace={pickWorkspace}
+        onCloseWorkspacePicker={closeWorkspacePicker}
+      />}
       {zone !== undefined && renderSlot('conversation.input.dock', zone)}
       {inputBar}
     </div>
@@ -196,7 +220,12 @@ export function ConversationContent(props: ConversationContentProps) {
       data-content-phase={phase}
     >
       <div className={css.scrollBody} data-conversation-scroll="">
-        {sessionId === undefined ? null : <Views />}
+        {sessionId === undefined ? null : <>
+          {renderSlot('conversation.draft.persistence', {})}
+          <div className={clsx(css.viewArea, hero && css.blankViewArea)} data-conversation-view-area="">
+            <Views />
+          </div>
+        </>}
         {composerSeat}
       </div>
       <WidthControls container={body} phase={phase} />

@@ -160,10 +160,9 @@ export function ConversationSessionHeader({
 }
 
 /**
- * Renders the active Session view inside the resident scrollport and keeps
- * the input draft mirrored while blank Hero chrome is visible.
+ * Renders the selected Session View inside the shared content layout.
  * @param props - Strict Session input/store, view ledger, and render shares.
- * @returns the active view area, or null while the Session remains blank.
+ * @returns the selected View, or no content while the Session remains blank.
  */
 export function ConversationSession(props: ConversationSessionProps) {
   return <DefaultConversationViews {...props} />
