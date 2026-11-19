@@ -117,3 +117,5 @@ These limits define what the shell owns versus what its occupants own; they are 
 None.
 
 </details>
+
+The root `sidebar.session-surface` factory supplies native sidebar spacing and New Session presentation without global navigation. Its stable `content` position composes caller-owned content; `onNew` is explicitly occurrence-owned and omission hides creation. `disabled` and `busy` control action availability.

@@ -221,7 +221,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
   onToggle: () => void
-  onCreate: () => void
+  onCreate?: (() => void) | undefined
   /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
   actions?: { rename: () => void; delete: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
@@ -294,7 +294,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
             )}
           />
         )}
-        <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>
+        {onCreate && <Tooltip label={t('actions.newSession')} shortcutKeys={newShortcut?.keys} side="bottom" align="end" delayMs={500} portal>
           <button
             type="button"
             className={css.iconButton}
@@ -304,7 +304,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
           >
             <IconNewChatOutlineRegular />
           </button>
-        </Tooltip>
+        </Tooltip>}
       </span>
     </div>
   )
@@ -424,11 +424,12 @@ function PinnedIndicator({ t }: { t: RowTranslate }) {
  * section, and every relevant live status. The task section sits above the
  * status lines so they stay the card's trailing status line.
  */
-function SessionHoverContent({ node, now, renderSlot, t }: {
+function SessionHoverContent({ node, now, renderSlot, showDecorations, t }: {
   node: SessionNode
   now: number
   renderSlot: RowRenderSlots
   t: RowTranslate
+  showDecorations?: boolean | undefined
 }) {
   // On archived rows the archived line already says the session is inactive,
   // so resting statuses (idle/completed) drop; live activity still shows.
@@ -440,7 +441,7 @@ function SessionHoverContent({ node, now, renderSlot, t }: {
       {/* Same placeholder rule as the row's trailing cell: no timestamp
           before the first prompt. */}
       {!node.blank && <div className={css.hoverTime}>{hoverTimeLabel(node.updatedAt, now, t)}</div>}
-      {renderSlot('sidebar.session.row.hover', { sessionId: node.id })}
+      {showDecorations !== false && renderSlot('sidebar.session.row.hover', { sessionId: node.id })}
       {statuses.map(status => (
         <div className={css.hoverStatus} key={status.label}>
           <StateDot state={status.state} />
@@ -543,12 +544,14 @@ export function SearchResultItem({ result, currentId, onOpen, onUnarchive, t }: 
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, t,
+  node, currentId, now, onOpen, onRenameRequest, renderSlot, onReveal, drag, onFork, showDecorations, t,
 }: {
   node: SessionNode
   currentId: string | undefined
   now: number
   onOpen: (id: SessionNode['id']) => void
+  onFork?: ((id: SessionNode['id']) => void) | undefined
+  showDecorations?: boolean | undefined
   /** Open the rename dialog from a title double-click (id + current title). */
   onRenameRequest: (id: SessionNode['id'], currentTitle: string) => void
   /** Scroll this row into view after search navigation, then acknowledge it. */
@@ -596,6 +599,12 @@ export function SessionNodeItem({
       role="treeitem"
       aria-selected={selected}
       aria-description={row.archived ? t('toast.archivedNotOpenable') : undefined}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+        event.preventDefault()
+        onOpen(node.id)
+      }}
       onClick={() => { onOpen(node.id) }}
       onPointerEnter={marquee.enter}
       onPointerLeave={marquee.leave}
@@ -632,7 +641,7 @@ export function SessionNodeItem({
       <span className={css.slot}>
         {!row.archived && !row.blank && (showStatus
           ? <SessionStatusDots statuses={statuses} />
-          : renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
+          : showDecorations !== false && renderSlot('sidebar.session.row.leading', { sessionId: node.id }))}
       </span>
       <span
         ref={titleRef}
@@ -681,7 +690,7 @@ export function SessionNodeItem({
           >
             {renderSlot(
               'sidebar.workspaces.session.menu.item',
-              { sessionId: node.id, displayTitle: row.title },
+              { sessionId: node.id, displayTitle: row.title, onFork },
               { hookContext: menuOpenState },
             )}
           </Menu>
@@ -693,7 +702,7 @@ export function SessionNodeItem({
   return (
     <HoverCard
       anchor={ownRow}
-      content={<SessionHoverContent node={node} now={now} renderSlot={renderSlot} t={t} />}
+      content={<SessionHoverContent node={node} now={now} renderSlot={renderSlot} showDecorations={showDecorations} t={t} />}
       openDelayMs={800}
       grouped
       disabled={menuOpen || drag?.active === true}

@@ -3356,6 +3356,19 @@ describe('ChatView', () => {
     expect(h.forkAt.mock.calls).toEqual([[3]])
   })
 
+  it('routes a native embedded branch to its occurrence callback while keeping message actions', () => {
+    const h = makeHarness({
+      nodes: [user(1, 'question'), assistant(2, 'answer')],
+      turnEnds: new Map([[1, 3]]),
+    })
+    const onForkAt = vi.fn()
+    const view = render(<h.ChatView {...h.props} onForkAt={onForkAt} />)
+    fireEvent.click(view.getByRole('button', { name: zh['message.branch'] }))
+    expect(onForkAt).toHaveBeenCalledWith(3)
+    expect(h.forkAt).not.toHaveBeenCalled()
+    expect(view.getAllByRole('button', { name: commonZh['copy'] })).not.toHaveLength(0)
+  })
+
   it('disables fork when the indexed Turn has a later steering Node', () => {
     const base = chatSnapshotFixture({
       nodes: [user(1, 'question'), assistant(2, 'answer')],

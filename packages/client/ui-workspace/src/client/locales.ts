@@ -7,6 +7,7 @@
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'scope.loading': '正在加载会话范围…',
+  'scope.retry': '重试',
   'scope.error': '无法加载会话范围',
   'defaultWorkspace.failed': '无法创建默认工作区，请通过“选择工作区”选择文件夹',
   'draft.workspaceRequired': '请先选择工作区',
@@ -135,6 +136,7 @@ export type WorkspaceKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'scope.loading': 'Loading session scope...',
+  'scope.retry': 'Retry',
   'scope.error': 'Session scope could not be loaded',
   'defaultWorkspace.failed': 'Unable to create default workspace. Use Choose workspace to select a folder.',
   'draft.workspaceRequired': 'Choose a workspace first.',

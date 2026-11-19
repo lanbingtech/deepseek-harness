@@ -148,8 +148,8 @@ export class SessionInputShell implements SessionInput {
   private draftSnapshotCache: { revision: number; value: DraftSnapshot } | undefined
   private attachmentIds: readonly DraftAttachmentId[] = []
   private disposed = false
-  /** Conversation store writer for the current semantic document. */
-  private persistDraft: ((draft: DraftSnapshot) => void) | undefined
+  /** Active occurrence leases per semantic draft writer. */
+  private readonly draftPersistenceWriters = new Map<(draft: DraftSnapshot) => void, number>()
   /** A restored draft's command token waiting for the trigger pipeline, with the revision its restore produced. */
   private pendingCommand: { readonly token: string; readonly rev: number } | undefined
   /** The in-flight claim resolution for a restored command chip. */
@@ -277,9 +277,9 @@ export class SessionInputShell implements SessionInput {
     return value
   }
 
-  /** Persist the latest document without changing the editor or binding a writer. */
+  /** Persist the latest document to each leased writer without changing the editor. */
   persistCurrentDraft(): void {
-    this.persistDraft?.(this.draftSnapshot)
+    this.writeDraft(this.draftSnapshot)
   }
 
   /**
@@ -612,6 +612,7 @@ export class SessionInputShell implements SessionInput {
       flight.controller.abort()
     }
     this.disposed = true
+    this.draftPersistenceWriters.clear()
     this.cancelCommandRestore()
     this.dispatchRun(({ type: 'release' }))
     this.unsubscribeInbox?.()
@@ -628,15 +629,27 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
-   * Bind the Conversation store writer without importing or saving content.
+   * Lease a Conversation store writer without importing or saving content.
+   * Repeated bindings of one callback share one write per publication.
+   * Session disposal releases every writer.
    * @param write - semantic draft writer; persistCurrentDraft flushes the initial value.
-   * @returns the unbind disposer.
+   * @returns an idempotent disposer that releases only this binding.
    */
   bindDraftPersistence(write: (draft: DraftSnapshot) => void): () => void {
-    this.persistDraft = write
+    this.draftPersistenceWriters.set(write, (this.draftPersistenceWriters.get(write) ?? 0) + 1)
+    let bound = true
     return () => {
-      if (this.persistDraft === write) this.persistDraft = undefined
+      if (!bound) return
+      bound = false
+      const leases = this.draftPersistenceWriters.get(write)
+      if (leases === undefined) return
+      if (leases === 1) this.draftPersistenceWriters.delete(write)
+      else this.draftPersistenceWriters.set(write, leases - 1)
     }
+  }
+
+  private writeDraft(draft: DraftSnapshot): void {
+    for (const write of this.draftPersistenceWriters.keys()) write(draft)
   }
 
   /**
@@ -940,7 +953,7 @@ export class SessionInputShell implements SessionInput {
     const draft = this.draftSnapshot
     if (draft !== this.lastPublishedDraft) {
       this.lastPublishedDraft = draft
-      this.persistDraft?.(draft)
+      this.writeDraft(draft)
     }
   }
 }

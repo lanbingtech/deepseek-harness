@@ -11,6 +11,8 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   RemoteError, SlotTestRuntime, usePinnedBrowserLanguages, stubConfigForm,
 } from '@deepseek-ai/dsh-client-test-runtime'
+import type { ConversationHeroProps, ConversationHeroControlsProps } from '../src/client/contract/slots.ts'
+import css from '../src/client/skeleton/ConversationRoot.module.css'
 import { InputHub } from '../src/client/input/hub.ts'
 import { apply, inject, type EmptyWorkspaceOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -25,6 +27,12 @@ Range.prototype.getBoundingClientRect = () => ({
 
 usePinnedBrowserLanguages('zh-CN')
 
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'conversation.test.embedded': { kind: 'single'; scope: 'session' }
+  }
+}
 
 const SID = 's1' as SessionId
 
@@ -77,6 +85,12 @@ function WorkspaceProbe({ open }: EmptyWorkspaceOwnerProps) {
       {String(open)}:{count}
     </button>
   )
+}
+
+function inputShell(runtime: SlotTestRuntime) {
+  const input = runtime.ctx.get('conversation')?.input
+  if (!(input instanceof InputHub)) throw new Error('Conversation did not install its input hub')
+  return input.shell(SID)
 }
 
 async function bench(opts?: { blank?: boolean }) {
@@ -220,8 +234,7 @@ describe('prompt rejection through the assembled composer', () => {
     const composer = view.container.querySelector<HTMLDivElement>('[data-composer-input]')!
     // Write through the assembled input resolver (contenteditable change
     // events carry no value; the resolver is the public draft write path).
-    const conversation = runtime.ctx.get('conversation') as { input: unknown }
-    const shell = (conversation.input as InputHub).shell(SID)
+    const shell = inputShell(runtime)
     act(() => { shell.setDraft('do not lose this') })
     fireEvent.keyDown(composer, { key: 'Enter' })
     await waitFor(() => { expect(prompt).toHaveBeenCalledOnce() })
@@ -254,5 +267,113 @@ describe('title projection across assembled surfaces', () => {
     })
     expect(within(hierarchy).queryByText('S')).toBeNull()
     await runtime.dispose()
+  })
+})
+
+function EmbeddedWelcome(_props: ConversationHeroProps) {
+  return <h2>Scoped welcome</h2>
+}
+
+function EmbeddedControls(_props: ConversationHeroControlsProps) {
+  return null
+}
+
+function EmbeddedView() {
+  return <article data-testid="embedded-transcript">Scoped transcript</article>
+}
+
+async function embeddedBench(blank: boolean, savedDraft?: string, withMain = false) {
+  const runtime = await SlotTestRuntime.create()
+  if (savedDraft !== undefined) localStorage.setItem(`dsh.conversation.${SID}`, savedDraft)
+  provideWorkspaceNavigation(runtime)
+  runtime.ctx.provide('configForms', { developerTools: { enabled: createSnapshotStore(true) }, get: () => stubConfigForm().scope } as never)
+  const locale = new LocaleRuntime(runtime.ctx)
+  runtime.ctx.provide('locale', locale)
+  runtime.slots.installLocale(locale)
+  await runtime.sessions.add({ id: SID, snapshot: { blank } })
+  const reference = runtime.sessions.retainFor(runtime.ctx, SID)
+  let setMounted: ((mounted: boolean) => void) | undefined
+  await runtime.root.declare({ ...LAYOUT_CHILDREN, 'conversation.test.embedded': { kind: 'single', scope: 'session' } }, function EmbeddedRoot(props) {
+    const [mounted, updateMounted] = useState(true)
+    setMounted = updateMounted
+    return <props.SessionProvider session={reference}>
+      {withMain && <section data-testid="main-occurrence">
+        {props.renderFactorySlot('conversation.content', {
+          variant: 'main', phase: blank ? 'hero' : 'active', hero: blank, workspaceRequired: false,
+        })}
+      </section>}
+      {mounted && props.renderFactorySlot('conversation.content', {
+        variant: 'embedded', phase: blank ? 'hero' : 'active', hero: blank,
+        workspaceRequired: false, placeholder: 'Scoped input',
+      }, { slots: { views: EmbeddedView, hero: EmbeddedWelcome, heroControls: EmbeddedControls } })}
+    </props.SessionProvider>
+  })
+  await runtime.mount({ inject: [...inject], apply })
+  return { runtime, setMounted: (mounted: boolean) => { act(() => { setMounted?.(mounted) }) } }
+}
+
+describe('native Conversation occurrences', () => {
+  it('keeps embedded blank input editable with local welcome and controls', async () => {
+    const { runtime } = await embeddedBench(true)
+    try {
+      const view = runtime.renderRoot()
+      expect(view.getByRole('heading', { name: 'Scoped welcome' })).toBeTruthy()
+      expect(view.queryByRole('button', { name: /workspace/i })).toBeNull()
+      expect(view.container.querySelector('[data-composer-input]')?.getAttribute('contenteditable')).toBe('true')
+      expect(view.getByRole('textbox', { name: 'Scoped input' })).toBeTruthy()
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('keeps the main draft writer after a second occurrence of its Session unmounts', async () => {
+    const { runtime, setMounted } = await embeddedBench(false, undefined, true)
+    try {
+      const view = runtime.renderRoot()
+      expect(view.container.querySelectorAll('[data-conversation-content]')).toHaveLength(2)
+      const shell = inputShell(runtime)
+      act(() => { shell.setDraft('shared before close') })
+      setMounted(false)
+      expect(view.container.querySelectorAll('[data-conversation-content]')).toHaveLength(1)
+      expect(view.getByTestId('main-occurrence')).toBeTruthy()
+      act(() => { shell.setDraft('saved after embedded close') })
+      await waitFor(() => {
+        const persisted: unknown = JSON.parse(localStorage.getItem(`dsh.conversation.${SID}`) ?? '{}')
+        expect(persisted).toMatchObject({ draft: { text: 'saved after embedded close', references: [] } })
+      })
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  it('owns transcript geometry and persists custom-view drafts through unmount and a cold reopen', async () => {
+    const { runtime, setMounted } = await embeddedBench(false)
+    let saved: string | null = null
+    try {
+      const view = runtime.renderRoot()
+      const transcript = view.getByTestId('embedded-transcript')
+      expect(transcript.closest(`.${css.viewArea}`)?.parentElement).toBe(view.container.querySelector('[data-conversation-scroll]'))
+      const shell = inputShell(runtime)
+      act(() => { shell.setDraft('embedded saved draft') })
+      await waitFor(() => {
+        const persisted: unknown = JSON.parse(localStorage.getItem(`dsh.conversation.${SID}`) ?? '{}')
+        expect(persisted).toMatchObject({ draft: { text: 'embedded saved draft', references: [] } })
+      })
+      setMounted(false)
+      setMounted(true)
+      expect(view.container.querySelector('[data-composer-input]')?.textContent).toBe('embedded saved draft')
+      saved = localStorage.getItem(`dsh.conversation.${SID}`)
+    } finally {
+      await runtime.dispose()
+    }
+    expect(saved).not.toBeNull()
+    // The runtime clears storage during disposal; replay the saved browser value into a fresh runtime.
+    const reopened = await embeddedBench(false, saved!)
+    try {
+      const view = reopened.runtime.renderRoot()
+      expect(view.container.querySelector('[data-composer-input]')?.textContent).toBe('embedded saved draft')
+    } finally {
+      await reopened.runtime.dispose()
+    }
   })
 })

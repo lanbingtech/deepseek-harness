@@ -35,6 +35,16 @@ kind: "package-reference"
 
 未保存标题的历史会话显示本地化名称「未命名 / Untitled」，不使用目录名兜底。当前空会话仍显示「新会话」，其他空会话仍隐藏。重命名草稿使用已保存标题，无标题时留空；无标题行不提供标题复制。
 
+### 浏览器扩展范围
+
+原生浏览器声明根列表 `sidebar.workspaces.header`，用于独立控件。插件注入 `workspaceBrowserScope`，通过 `ctx.workspaceBrowserScope.contribute({ source, priority })` 提供裸可观测数据源；Cordis 随贡献插件卸载撤销它。数值较小的优先级获胜，同级优先采用较早注册者。撤销当前贡献后使用下一数据源，没有贡献时恢复不受限的原生浏览。组件通过框架绑定的 `useBrowserScope` Hook 读取范围，不接收服务。
+
+每个范围包含 `id`、`revision` 和 `status`（`ready`、`loading` 或 `error`）。就绪成员是只读 Session ID 数组：`undefined` 表示不受限，`[]` 表示空范围。加载与错误范围不显示 Session 行或标题匹配，也不发送不受限的内容搜索。范围变化会取消旧搜索并丢弃旧响应。成员过滤在原生分组、计数、展开水位和搜索显示边界前执行。完整账户成员及原生排序账本保留；范围内拖拽仍使用原生完整序列操作，仅移动被拖动的行，并保持隐藏成员的相对顺序。范围不改变 Session 选择、创建默认值、归档状态或 Workspace 归属。
+
+### 原生 Session 行 Factory
+
+`workspace.session-row` 是主浏览器与独立嵌入式列表共用的根作用域 Factory。调用者提供 `sessionId`、`selectedSessionId`、`onSelect` 和 `now`；Factory 通过原生 Hook 读取真实目录、交互、子智能体、完成、置顶及归档状态，不持有 Session 引用。`onFork` 为当前实例覆盖原生分叉操作；省略时沿用主视图分叉。`showDecorations: false` 隐藏行首及悬浮卡片中的环境扩展内容，保留 Session 自身状态。Factory 声明现有 `sidebar.workspaces.session.menu.item`、`sidebar.workspaces.session.row.action`、`sidebar.session.row.leading` 和 `sidebar.session.row.hover` 插槽；插件继续通过这些插槽扩展。所有实例使用同一原生行、样式、悬浮卡片和菜单。聚焦行后按 Enter 或空格打开；归档行保留原生拒绝打开的行为。
+
 ### 重排序与视图选项
 
 分组和平铺视图都先显示置顶 Session，再显示普通 Session。**最近更新**在各分区内严格按最近一次用户提示词或 steering（中途引导）时间降序排列，置顶时间不影响它。**手动排序**使用同一条完整 Session 序列中的相对位置，包括隐藏的归档项。返回最近更新会丢弃手动布局，再次进入手动排序时冻结当时的时间顺序。浏览器默认采用最近更新，并在重新加载后记住所选模式。
@@ -236,3 +246,7 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 无。
 
 </details>
+
+## 嵌入浏览器
+
+根 Factory `workspace.browser` 渲染完整原生浏览器。调用方提供 `scope`、可选的 `workspaceIds`、`selectedSessionId`、`onSelect`、`onNew(workspaceId?)` 和 `onFork`。成员范围在搜索及显示前应用。指定工作区时保留空分组，用户可以在空工作区内新建会话。每个实例默认按工作区树显示，视图偏好与搜索状态独立保存在内存中。选择和分支调用业务回调，不跳转主对话。工作区实体、置顶及归档仍遵循原生共享规则。嵌入面板使用已有工作区，不提供新增目录入口。

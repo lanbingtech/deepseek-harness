@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { FactoryComponentPropsOf, GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
@@ -17,6 +17,8 @@ import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../src/clie
 import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
+import { NativeSessionRow, type NativeSessionRowOwnerProps } from '../src/client/rows/SessionRow.tsx'
+import { WorkspaceBrowserOccurrenceContext, type WorkspaceBrowserOccurrence } from '../src/client/occurrence.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
@@ -104,7 +106,7 @@ const renderDirectoryFlowOnly: WorkspaceBrowserProps['renderSlot'] = (name: stri
     ? <div data-testid="directory-flow" />
     : null
 
-function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
+function mount(overrides: Partial<WorkspaceBrowserProps> = {}, renderRowSlot: FactoryComponentPropsOf<'workspace.session-row'>['renderSlot'] = () => null, occurrence?: WorkspaceBrowserOccurrence) {
   const controls = createWorkspaceShortcutControls()
   const store = createWorkspaceViewStore().create()
   const props: WorkspaceBrowserProps = {
@@ -139,20 +141,120 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     useBrowserScope: selector => selector(undefined),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
+    renderFactorySlot: (_name: string, owner: object) => <NativeSessionRow {...props} {...owner as NativeSessionRowOwnerProps}
+      renderSlot={renderRowSlot} __renders={undefined} useFactorySlot={() => { throw new Error('No local row slot') }} />,
     t,
     ...overrides,
   }
-  const view = render(<WorkspaceBrowser {...props} />)
-  return { view, props, store, controls }
+  const view = render(<WorkspaceBrowserOccurrenceContext.Provider value={occurrence}>
+    <WorkspaceBrowser {...props} />
+  </WorkspaceBrowserOccurrenceContext.Provider>)
+  return { view, props, store, controls, occurrence }
 }
 
 /** Re-render with (possibly) changed props — WorkspaceBrowser has no side channel. */
 function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrowserProps>) {
   Object.assign(b.props, overrides)
-  b.view.rerender(<WorkspaceBrowser {...b.props} />)
+  b.view.rerender(<WorkspaceBrowserOccurrenceContext.Provider value={b.occurrence}>
+    <WorkspaceBrowser {...b.props} />
+  </WorkspaceBrowserOccurrenceContext.Provider>)
 }
 
 describe('WorkspaceBrowser', () => {
+  it('preserves registered workspace inventory under main session membership filters', () => {
+    const scope = { id: 'main', revision: 1, status: 'ready' as const, memberSessionIds: [] }
+    mount({ useBrowserScope: selector => selector(scope),
+      useWorkspaces: hook(workspaceState([workspace('knowledge-center', [])])) })
+    expect(screen.getByText('knowledge-center')).toBeTruthy()
+  })
+
+  it('retains registered workspaces on an initial metadata error', () => {
+    const scope = { id: 'main', revision: 1, status: 'error' as const, message: 'Retry membership' }
+    mount({ useBrowserScope: hook(scope), useWorkspaces: hook(workspaceState([workspace('knowledge-center', [])])) })
+    expect(screen.getByText('knowledge-center')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toBe('Retry membership')
+  })
+
+  it('retains known sessions on metadata errors and exposes local retry', () => {
+    const onRetry = vi.fn()
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id: 'qa', revision: 2, status: 'error', message: 'metadata unavailable', memberSessionIds: [sid('known')] }, selectedSessionId: sid('known'), onSelect: vi.fn(), onFork: vi.fn(), onRetry }
+    mount({ useSessions: hook(sessionState([summary('known', 1), summary('unknown', 2)])), useWorkspaces: hook(workspaceState([workspace('center', ['known', 'unknown'])])) }, () => null, occurrence)
+    expect(screen.getByText('known')).toBeTruthy()
+    expect(screen.queryByText('unknown')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: t('scope.retry') }))
+    expect(onRetry).toHaveBeenCalledOnce()
+  })
+
+  it('shows the native list skeleton while initial membership is pending', () => {
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id: 'qa', revision: 1, status: 'loading' }, selectedSessionId: null, onSelect: vi.fn(), onFork: vi.fn() }
+    const b = mount({}, () => null, occurrence)
+    expect(b.view.container.querySelector('[aria-busy="true"]')).toBeTruthy()
+    expect(screen.queryByText(t('scope.loading'))).toBeNull()
+  })
+
+  it.each(['workspace-tree', 'flat'] as const)('shows the current business blank in %s without mainView retention', (mode) => {
+    const local = createWorkspaceViewStore(true).create()
+    local.actions.setGroupBy(mode)
+    const occurrence: WorkspaceBrowserOccurrence = {
+      scope: { id: 'business', revision: 1, status: 'ready', memberSessionIds: [sid('qa')] },
+      workspaceIds: [wid('center')], selectedSessionId: sid('qa'),
+      onSelect: vi.fn(), onNew: vi.fn(), onFork: vi.fn(),
+    }
+    const catalog = sessionState([
+      summary('qa', 2, { blank: true }), summary('main', 3, { blank: true }),
+    ], { main: sid('main') })
+    const b = mount({
+      useStore: bindSnapshotSelector(local), actions: local.actions,
+      useSessions: hook(catalog), useWorkspaces: hook(workspaceState([workspace('center', ['qa'])])),
+    }, () => null, occurrence)
+    expect(b.view.container.querySelector('[data-row-key="session:qa"]')?.getAttribute('aria-selected')).toBe('true')
+    expect(b.view.container.querySelector('[data-row-key="session:main"]')).toBeNull()
+    expect(catalog.byId[sid('qa')]?.retainedBy).toEqual({})
+    expect(catalog.byId[sid('main')]?.retainedBy).toEqual({ mainView: 1 })
+  })
+
+  it('keeps an embedded read-only browser from creating or navigating main sessions', () => {
+    const occurrence: WorkspaceBrowserOccurrence={ scope:{ id:'empty',revision:1,status:'ready',memberSessionIds:[] },workspaceIds:[wid('center')],selectedSessionId:null,onSelect:vi.fn(),onFork:vi.fn() }
+    const local=createWorkspaceViewStore(true).create()
+    const b=mount({ useStore:bindSnapshotSelector(local),actions:local.actions,useWorkspaces:hook(workspaceState([workspace('center',[])])) },()=>null,occurrence)
+    expect(screen.getByText('center')).toBeTruthy()
+    expect(screen.queryByRole('button',{ name:t('actions.newSession.aria',{ name:'center' }) })).toBeNull()
+    expect(b.props.startSession).not.toHaveBeenCalled()
+  })
+
+
+  it('isolates embedded selection, tree membership and search controls from the main browser', async () => {
+    const local = createWorkspaceViewStore(true).create()
+    const onSelect = vi.fn(), onNew = vi.fn(), onFork = vi.fn()
+    const occurrence: WorkspaceBrowserOccurrence = { scope: { id:'embedded', revision:1, status:'ready', memberSessionIds:[sid('qa')] }, workspaceIds:[wid('center'),wid('library')], selectedSessionId:sid('qa'),onSelect,onNew,onFork }
+    const b = mount({ useStore: bindSnapshotSelector(local), actions:local.actions,
+      useSessions:hook(sessionState([summary('qa',2),summary('main',3)],{ main:sid('main') })),
+      useWorkspaces:hook(workspaceState([
+        { ...workspace('center',[]),path:'/knowledge-center' },
+        { ...workspace('library',['qa']),path:'/knowledge-center/bases/library/wiki' },
+        { ...workspace('other',['main']),path:'/other' },
+      ])),
+    },()=>null,occurrence)
+    expect(local.getSnapshot().groupBy).toBe('workspace-tree')
+    expect(screen.queryByText('other')).toBeNull()
+    expect(screen.getByText('center')).toBeTruthy()
+    const row=screen.getByText('qa').closest('[role="treeitem"]')!
+    expect(row.getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(row)
+    expect(onSelect).toHaveBeenCalledWith('qa')
+    expect(b.props.open).not.toHaveBeenCalled()
+    act(() => { b.controls.add(); b.controls.directoryBusy(true) })
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+    const search=screen.getByRole('button',{ name:t('search.sessions.aria') })
+    fireEvent.click(search)
+    expect(b.controls.state.getSnapshot().searchRequest).toBe(0)
+    expect(b.controls.state.getSnapshot().addRequested).toBe(true)
+    expect(b.controls.state.getSnapshot().directoryBusy).toBe(true)
+    expect(screen.queryByRole('button',{ name:t('workspace.add') })).toBeNull()
+    local.actions.setGroupBy('flat')
+    expect(createWorkspaceViewStore().create().getSnapshot().groupBy).toBe('workspace')
+  })
+
   it.each(['workspace', 'flat', 'ungrouped'] as const)('keeps %s recency independent of arrival order and saved manual positions', (mode) => {
     localStorage.clear()
     const preferences = createWorkspaceViewStore().create()
@@ -730,7 +832,7 @@ describe('WorkspaceBrowser', () => {
 
   it('renders both Session row lists for every visible row in the grouped tree and the flat list', () => {
     const rendered = vi.fn()
-    const renderSlot: WorkspaceBrowserProps['renderSlot'] = (name: string, owner: object) => {
+    const renderSlot = (name: string, owner: object) => {
       rendered(name, owner)
       return null
     }
@@ -738,10 +840,10 @@ describe('WorkspaceBrowser', () => {
       useSessions: hook(sessionState([summary('alpha-s', 1)])),
       useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
       renderSlot,
-    })
+    }, renderSlot)
     expect(rendered).not.toHaveBeenCalledWith('sidebar.workspaces.session.menu.item', expect.anything())
     fireEvent.click(screen.getByText('alpha'))
-    const owner = { sessionId: sid('alpha-s'), displayTitle: 'alpha-s' }
+    const owner = { sessionId: sid('alpha-s'), displayTitle: 'alpha-s', onFork: undefined }
     expect(rendered).toHaveBeenCalledWith('sidebar.workspaces.session.menu.item', owner)
     expect(rendered).toHaveBeenCalledWith('sidebar.workspaces.session.row.action', owner)
     rendered.mockClear()
@@ -2732,7 +2834,8 @@ describe('native scoped search lifecycle', () => {
       fireEvent.change(screen.getByRole('textbox'), { target: { value: 'needle' } })
       await act(async () => { await vi.advanceTimersByTimeAsync(250) })
       expect(calls).toHaveLength(0)
-      expect(screen.getByRole('status').textContent).toBe(t('scope.loading'))
+      expect(screen.getByLabelText(t('scope.loading')).getAttribute('aria-busy')).toBe('true')
+      expect(screen.queryByText(t('scope.loading'))).toBeNull()
       rerender(b, { useBrowserScope: hook({ id: 'one', revision: 1, status: 'ready' as const, memberSessionIds: [sid('one')] }) })
       await act(async () => { await vi.advanceTimersByTimeAsync(250) })
       expect(calls[0]?.ids).toEqual([sid('one')])
@@ -2777,7 +2880,7 @@ describe('native scoped title search', () => {
 
 
 describe('native scoped workspace ancestry', () => {
-  it('retains a hidden directory parent when guarding workspace-tree drag boundaries', () => {
+  it('retains registered directory parents when guarding workspace-tree drag boundaries', () => {
     const insertWorkspaceBefore = vi.fn(async () => {})
     const b = mount({
       useSessions: hook(sessionState([summary('foreign', 3), summary('child-member', 2), summary('outside-member', 1)])),
@@ -2789,8 +2892,8 @@ describe('native scoped workspace ancestry', () => {
       useBrowserScope: hook({ id: 'member', revision: 1, status: 'ready' as const, memberSessionIds: [sid('child-member'), sid('outside-member')] }),
       insertWorkspaceBefore,
     })
-    act(() => b.store.actions.setGroupBy('workspace-tree'))
-    expect(screen.queryByText('hidden-parent')).toBeNull()
+    act(() => { b.store.actions.setGroupBy('workspace-tree') })
+    expect(screen.getByText('hidden-parent')).toBeTruthy()
     const child = screen.getByText('visible-child').closest('[role="treeitem"]') as HTMLElement
     const outside = screen.getByText('outside').closest('[role="treeitem"]') as HTMLElement
     fireEvent.dragStart(child, { dataTransfer: dragData() })

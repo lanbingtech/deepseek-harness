@@ -86,6 +86,8 @@ export type {
   ComposerBarInjected, ComposerBarOwnerProps, ComposerBarProps, ComposerChainProps,
   ConversationHeaderActionOwnerProps, ConversationHeaderCornerOwnerProps, ConversationHeaderLineageOwnerProps,
   ConversationContentInputProps, ConversationContentProps,
+  ConversationHeroProps, ConversationHeroControlsInputProps, ConversationHeroControlsProps,
+  ConversationDraftPersistenceProps,
   ConversationInjected, ConversationSessionHeaderInjected, ConversationSessionHeaderSlotProps,
   ConversationSessionInjected, ConversationSessionSlotProps, ConversationSlotProps, ConversationViewsProps,
   ConversationWidthControlsInputProps, ConversationWidthControlsProps,

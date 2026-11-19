@@ -19,7 +19,7 @@ import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
-import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RemoteError, SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { MenuItemButton } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -35,10 +35,10 @@ afterEach(cleanup)
 beforeEach(() => { localStorage.clear() })
 
 /** Runtime with the locale face installed (the browser entry declares `locale:` — zh default backs the t seat). */
-async function createRuntime(): Promise<SlotTestRuntime> {
+async function createRuntime(selectPanel = vi.fn()): Promise<SlotTestRuntime> {
   const runtime = await SlotTestRuntime.create()
   runtime.ctx.provide('shortcuts', { register: () => () => {}, catalog: createSnapshotStore([]) })
-  runtime.ctx.provide('layout', { selectPanel: vi.fn(), beginNavigation: () => new AbortController().signal })
+  runtime.ctx.provide('layout', { selectPanel, beginNavigation: () => new AbortController().signal })
   runtime.releaseWorkspaceSource()
   // The rename flow never picks a directory; the namespace only has to be there
   // for ui-workspace's inject to settle.
@@ -228,5 +228,49 @@ describe('session rename through the assembled browser', () => {
     expect(view.getByLabelText('会话名称')).toBeTruthy()
     expect(view.getByText('旧标题')).toBeTruthy()
     await runtime.dispose()
+  })
+})
+
+
+describe('native Session row factory in an independent pane', () => {
+  it('keeps selection and branching local while using the shipped row and menu', async () => {
+    const selectPanel = vi.fn()
+    const runtime = await createRuntime(selectPanel)
+    onTestFinished(async () => { await runtime.dispose() })
+    const select = vi.fn(), fork = vi.fn()
+    await runtime.sessions.add({ id: SID, summary: { title: 'Embedded question', displayTitle: 'Embedded question' } })
+    await runtime.root.declare({} as never, function EmbeddedRows({ renderFactorySlot }: PropsRenderFactories) {
+      return <>
+        <section aria-label="First pane">{renderFactorySlot('workspace.session-row', {
+          sessionId: SID, selectedSessionId: SID, onSelect: select, onFork: fork, showDecorations: false, now: Date.now(),
+        })}</section>
+        <section aria-label="Second pane">{renderFactorySlot('workspace.session-row', {
+          sessionId: SID, selectedSessionId: null, onSelect: () => {}, now: Date.now(),
+        })}</section>
+      </>
+    } as never)
+    await runtime.mount({ inject: [...inject], apply })
+    const decoration = vi.fn(() => <span>Ambient task</span>)
+    runtime.slots.register({ name: 'sidebar.session.row.leading', id: 'test.task' }, decoration)
+    const view = runtime.renderRoot()
+    const first = within(view.getByRole('region', { name: 'First pane' }))
+    const second = within(view.getByRole('region', { name: 'Second pane' }))
+    const row = await first.findByRole('treeitem')
+    expect(row.getAttribute('aria-selected')).toBe('true')
+    expect(second.getByRole('treeitem').getAttribute('aria-selected')).toBe('false')
+    expect(first.queryByText('Ambient task')).toBeNull()
+    expect(second.getByText('Ambient task')).toBeTruthy()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(select).toHaveBeenCalledExactlyOnceWith(SID)
+    fireEvent.click(first.getByRole('button', { name: '会话“Embedded question”的操作' }))
+    expect(view.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      '置顶会话', '重命名', '分叉会话', '归档会话', '复制 Session ID',
+    ])
+    fireEvent.click(view.getByRole('menuitem', { name: '分叉会话' }))
+    expect(fork).toHaveBeenCalledExactlyOnceWith(SID)
+    expect(select).toHaveBeenCalledOnce()
+    expect(selectPanel).not.toHaveBeenCalled()
+    await runtime.sessions.updateSummary(SID, { displayTitle: 'Renamed question', title: 'Renamed question' })
+    expect(await first.findByText('Renamed question')).toBeTruthy()
   })
 })

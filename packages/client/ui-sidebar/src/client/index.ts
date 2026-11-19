@@ -14,6 +14,7 @@ import type { SidebarPanelMetadata, SidebarRootInjected } from './contract/slots
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
 import { SidebarNavigation } from './navigation.ts'
 export type { ISidebarNavigation, SidebarNavigationState } from './navigation.ts'
+import { SessionSurface } from './SessionSurface.tsx'
 import { SidebarRoot } from './SidebarRoot.tsx'
 import { en, zh, type SidebarKey } from './locales.ts'
 
@@ -45,6 +46,7 @@ export const inject = ['slots', 'layout', 'uiWorkspace', 'locale', 'shortcuts']
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.slots.registerFactory({ name: 'sidebar.session-surface', scope: 'root', locale: NS, slots: { content: { scope: 'root' } } }, SessionSurface)
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-sidebar: dictionaries')
   const navigation = new SidebarNavigation(view => ctx.slots.entriesOfSlot('sidebar.navigation.view').some(entry => entry.options.key === view))

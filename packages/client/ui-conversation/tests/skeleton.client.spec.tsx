@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { GlobalStandardProps, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, createElement, useContext, type ComponentType, type ReactNode } from 'react'
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionListState, SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -20,6 +20,7 @@ import type { ConversationSnapshot } from '../src/client/contract/snapshot.ts'
 import { createConversationStore } from '../src/client/stores.ts'
 import { SessionInputShell } from '../src/client/input/facade.ts'
 import { en, zh } from '../src/client/locales.ts'
+import { ConversationDraftPersistence } from '../src/client/skeleton/ConversationDraftPersistence.tsx'
 import { ConversationContent } from '../src/client/skeleton/ConversationContent.tsx'
 import { ConversationHeader } from '../src/client/skeleton/ConversationHeader.tsx'
 import { ConversationMainPanel } from '../src/client/skeleton/ConversationMainPanel.tsx'
@@ -33,7 +34,7 @@ import type { InputBarProps } from '../src/client/skeleton/InputBar.tsx'
 import type {
   ComposerBarOwnerProps, ConversationContentInputProps, ConversationContentProps,
   ConversationHeaderLineageOwnerProps, ConversationSessionHeaderSlotProps, ConversationSessionSlotProps, ConversationSlotProps,
-  ConversationViewsProps,
+  ConversationViewsProps, ConversationHeroControlsInputProps,
 } from '../src/client/contract/slots.ts'
 import type { ViewTab } from '../src/client/contract/views.ts'
 
@@ -46,6 +47,20 @@ function StableConversationViews() {
   const props = useContext(FactoryViewsTestContext)
   if (props === undefined) throw new Error('Factory views test context is missing')
   return <>{props.renderSlot('conversation.session', {})}</>
+}
+
+const FactoryFallbacks = createContext<Record<string, ComponentType<never>>>({})
+
+function StableConversationHero() {
+  const props = useContext(FactoryViewsTestContext)
+  const Hero = useContext(FactoryFallbacks).hero!
+  return createElement(Hero, props as never)
+}
+
+function StableConversationHeroControls(owner: ConversationHeroControlsInputProps) {
+  const props = useContext(FactoryViewsTestContext)
+  const Controls = useContext(FactoryFallbacks).heroControls!
+  return createElement(Controls, { ...props, ...owner } as never)
 }
 
 // jsdom implements no Range geometry (Lexical's scroll-into-view measures the
@@ -236,6 +251,12 @@ function mount(
         />
       )
     }
+    if (key === 'conversation.draft.persistence') {
+      return <ConversationDraftPersistence {...props} sessionId={SID} useChat={useChat} useTrajectory={useTrajectory}
+        useSession={useSession} useConversation={useConversation} useInput={useInput} inputActions={inputActions} {...allowAllAccess}
+        useStore={bindSnapshotSelector(store)} actions={store.actions}
+        bindDraftPersistence={write => wiring.bindDraftPersistence(write)} />
+    }
     if (key === 'conversation.session') {
       return (
         <ConversationSession
@@ -328,7 +349,7 @@ function mount(
     slots?: Record<string, (props: never) => ReactNode>
   }) => {
     const common: ConversationViewsProps = {
-      sessionId: SID,
+      sessionId: sessionId as SessionId,
       SessionProvider,
       useSession,
       useConversation,
@@ -351,12 +372,19 @@ function mount(
       selectWorkspace: retargetWorkspace,
       t,
     }
-    const useFactorySlot = ((name: string, fallback: (props: never) => ReactNode) => (
-      name === 'views' ? StableConversationViews : factoryOptions?.slots?.[name] ?? fallback
-    )) as ConversationContentProps['useFactorySlot']
+    const fallbacks: Record<string, ComponentType<never>> = {}
+    const useFactorySlot = ((name: string, fallback: ComponentType<never>) => {
+      fallbacks[name] = fallback
+      if (name === 'views') return StableConversationViews
+      if (name === 'hero') return StableConversationHero
+      if (name === 'heroControls') return StableConversationHeroControls
+      return factoryOptions?.slots?.[name] ?? fallback
+    }) as ConversationContentProps['useFactorySlot']
     return (
       <FactoryViewsTestContext.Provider value={common}>
-        <ConversationContent {...({ ...common, ...runtimeProps, ...input, useFactorySlot })} />
+        <FactoryFallbacks.Provider value={fallbacks}>
+          <ConversationContent {...({ ...common, ...runtimeProps, ...input, useFactorySlot })} />
+        </FactoryFallbacks.Provider>
       </FactoryViewsTestContext.Provider>
     )
   }) as ConversationSlotProps['renderFactorySlot']
@@ -557,8 +585,7 @@ describe('ConversationRoot resident composer', () => {
     expect(b.view.getByText('预览版')).toBeTruthy()
     expect(b.view.queryByTestId('view-chat')).toBeNull()
     // The same machine-backed textarea is live in the hero, and the
-    // persistence mirror stays bound (ConversationSession mounts chrome-hidden
-    // for blank sessions): hero typing reaches the Conversation store.
+    // persistence writer stays bound while the Hero is visible.
     const box = b.view.getByRole('textbox')
     expect(host?.contains(box)).toBe(true)
     act(() => { b.wiring.setDraft('draft in hero') })

@@ -40,7 +40,7 @@
  */
 import type { WorkspaceBrowserScopeSnapshot } from '../browser-scope.ts'
 import type {
-  HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore, SlotHookFactory,
+  HostObservable, InjectFace, PropsHooks, PropsLocale, PropsRenderSlots, PropsRenderFactories, PropsRuntime, PropsStore, SlotHookFactory,
 } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pull the owner SlotMap merges into programs that resolve the
 // runtime shares below.
@@ -81,6 +81,8 @@ export interface SessionRowOwnerProps {
   sessionId: SessionId
   /** Row display title: persisted title, or empty when the Session has none. */
   displayTitle: string
+  /** Occurrence-local branch action; omission preserves native main-view branching. */
+  onFork?: ((sessionId: SessionId) => void) | undefined
 }
 
 /** The row menu's open state as its owner holds it: the `useState` pair. */
@@ -477,11 +479,8 @@ export type WorkspaceBrowserProps =
   & PropsRenderSlots<
     | 'sidebar.workspaces.header'
     | 'sidebar.workspaces.directoryFlow'
-    | 'sidebar.workspaces.session.menu.item'
-    | 'sidebar.workspaces.session.row.action'
-    | 'sidebar.session.row.leading'
-    | 'sidebar.session.row.hover'
   >
+  & PropsRenderFactories
   & PropsStore<WorkspaceViewStoreHandle>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & PropsHooks<WorkspaceBrowserInjected['hooks']>

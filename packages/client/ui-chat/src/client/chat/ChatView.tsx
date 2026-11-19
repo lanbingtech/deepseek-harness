@@ -61,9 +61,10 @@ export function ChatView(props: ChatViewSlotProps | ChatContentProps) {
   const {
     useSession, useChat, useConversation, useSessions, renderSlot,
     sessionId, openFile: defaultOpenFile, openExternalLink, loadOlder, loadThrough, loadImage,
-    inspectCall, chatScroll, forkAt, fileMentions,
+    inspectCall, chatScroll, forkAt: defaultForkAt, fileMentions,
     usePresentation, useProjection, t, mode, hideUserMessages, useStore, actions, scrollMemory, hookContext,
   } = props
+  const forkAt = 'onForkAt' in props && props.onForkAt !== undefined ? props.onForkAt : defaultForkAt
   const openFile = 'onOpenFile' in props && props.onOpenFile !== undefined ? props.onOpenFile : defaultOpenFile
   const order = useChat(s => s.order)
   const groupedEntries = useConversation(snapshot => snapshot.views.grouped('chat')?.entries)

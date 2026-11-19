@@ -7,9 +7,10 @@ import {
   SlotTestRuntime, bindSnapshotSelector, stubConfigForm, usePinnedBrowserLanguages,
 } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { resolveSlotLabel, type InjectFace, type PropsRenderFactories, type PropsRuntime, type PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
+import { resolveSlotLabel, type InjectFace, type PropsRenderFactories, type PropsRuntime, type PropsStore, type StoredFactory } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import {
@@ -48,7 +49,7 @@ usePinnedBrowserLanguages('zh-CN')
 
 const SID = 'session-1' as SessionId
 
-function FlowStateProbe({ useStore, actions, mode }: ChatFlowSlotProps) {
+function FlowStateProbe({ useStore, actions, mode }: Pick<ChatFlowSlotProps, 'useStore' | 'actions' | 'mode'>) {
   const open = useStore(state => state.turnProcesses[0]?.collapsed !== true)
   return <button onClick={() => { actions.setTurnProcessOpen(1, 1, !open) }}>
     {mode ?? 'interactive'}:{String(open)}
@@ -105,7 +106,7 @@ async function bench(factoryOnly: boolean | 'default' = false) {
     setBodies = setVisible
     if (!factoryOnly || !visible) return null
     if (factoryOnly === 'default') return <props.SessionProvider session={reference}>
-      {props.renderSlot('conversation.approval.detail', {})}
+      {props.renderSlot('conversation.approval.detail', { callId: 'test-call' as ToolCallId })}
     </props.SessionProvider>
     return <props.SessionProvider session={reference}>
       {props.renderFactorySlot('conversation.chat.content', {})}
@@ -124,6 +125,10 @@ async function bench(factoryOnly: boolean | 'default' = false) {
     runtime, conversation, chat, chatSettings, sourceDescriptor,
     showBodies: (visible = true) => { act(() => { setBodies?.(visible) }) },
   }
+}
+
+function assertFactoryInject(definition: StoredFactory): asserts definition is StoredFactory & { inject: NonNullable<StoredFactory['inject']> } {
+  if (definition.inject === undefined) throw new Error('Chat content factory did not install its injection')
 }
 
 function storeOf(runtime: SlotTestRuntime, key: 'conversation.session' | 'conversation.session.header' | 'conversation.view') {
@@ -150,7 +155,7 @@ describe('Chat apply wiring', () => {
 
   it('isolates process folding and scroll restoration across concurrent native Factory occurrences of one Session', async () => {
     installTurnNavigatorObserver()
-    onTestFinished(() => vi.unstubAllGlobals())
+    onTestFinished(() => { vi.unstubAllGlobals() })
     const b = await bench(true)
     onTestFinished(() => b.runtime.dispose())
     await b.runtime.mount({ inject: ['slots'], apply(ctx) {
@@ -158,14 +163,15 @@ describe('Chat apply wiring', () => {
     } })
     const view = b.runtime.renderRoot()
     const definition = b.runtime.factoryOf('conversation.chat.content')
-    const inject = definition.inject!
+    assertFactoryInject(definition)
+    const inject = definition.inject
     const memories: ChatViewInjected['chatScroll'][] = []
     const spy = vi.spyOn(definition, 'inject').mockImplementation((...args) => {
       const result = inject(...args)
       memories.push(result.chatScroll as ChatViewInjected['chatScroll'])
       return result
     })
-    onTestFinished(() => spy.mockRestore())
+    onTestFinished(() => { spy.mockRestore() })
     b.showBodies()
     expect(view.getByRole('button', { name: 'interactive:true' })).toBeTruthy()
     fireEvent.click(view.getByRole('button', { name: 'readonly:true' }))
@@ -185,14 +191,16 @@ describe('Chat apply wiring', () => {
 
   it('preserves the ordinary native disclosure memory when its content unmounts and remounts', async () => {
     installTurnNavigatorObserver()
-    onTestFinished(() => vi.unstubAllGlobals())
+    onTestFinished(() => { vi.unstubAllGlobals() })
     const b = await bench('default')
     onTestFinished(() => b.runtime.dispose())
     const defaultEntry = b.runtime.slots.entries('conversation.view')[0]!
+    const defaultStore = defaultEntry.store as ChatStore
+    const injectDefault = defaultEntry.inject as (sessionId: SessionId) => Pick<ChatViewInjected, 'chatScroll'>
     await b.runtime.mount({ inject: ['slots'], apply(ctx) {
       ctx.slots.register({ name: 'conversation.chat.flow', priority: -100 }, FlowStateProbe)
-      ctx.slots.register({ name: 'conversation.approval.detail', priority: -100, store: defaultEntry.store!,
-        inject: (sessionId, actions) => defaultEntry.inject!(sessionId as never, actions as never) as Pick<ChatViewInjected, 'chatScroll'>,
+      ctx.slots.register({ name: 'conversation.approval.detail', priority: -100, store: defaultStore,
+        inject: injectDefault,
       }, DefaultViewTestSeat)
     } })
     const view = b.runtime.renderRoot()

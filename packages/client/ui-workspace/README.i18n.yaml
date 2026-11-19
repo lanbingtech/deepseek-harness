@@ -7,7 +7,7 @@
   zh: c36c0cdff7e77576
 /deepseek-ai-dsh-client-ui-workspace:
   en: b286adf3aca51710
-  zh: 6122f6e7c8015197
+  zh: fb2d414fc343124d
 /deepseek-ai-dsh-client-ui-workspace/summary:
   en: 1a76ace6a18e3ab5
   zh: b274d1e98e133851
@@ -17,6 +17,12 @@
 /deepseek-ai-dsh-client-ui-workspace/use-this-package:
   en: d042b4b1dd7e7f56
   zh: c12fa070ef5a02a4
+/deepseek-ai-dsh-client-ui-workspace/use-this-package/browser-extension-scope:
+  en: 28c9b7a0091939bf
+  zh: a45a6e9ef43658ef
+/deepseek-ai-dsh-client-ui-workspace/use-this-package/native-session-row-factory:
+  en: ab076e48aed6a243
+  zh: 98726f99fdb6c1a9
 /deepseek-ai-dsh-client-ui-workspace/use-this-package/reordering-and-view-options:
   en: 8673afc1d72ad077
   zh: 9fbb83a4029c5d10

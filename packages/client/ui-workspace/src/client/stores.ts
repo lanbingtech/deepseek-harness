@@ -79,16 +79,16 @@ function copySessionOrders(
  * Create the workspace browser viewing store handle.
  * @returns the store handle (spec + type + identity + factory in one).
  */
-export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState, WorkspaceViewActions> {
+export function createWorkspaceViewStore(embedded = false): EngineStoreHandle<WorkspaceViewState, WorkspaceViewActions> {
   return defineStore({
     init: (): WorkspaceViewState => ({
-      groupBy: 'workspace',
+      groupBy: embedded ? 'workspace-tree' : 'workspace',
       orderBy: 'updated',
       groupExpansion: {},
       sessionOrderByAccount: {},
       archivedFilter: 'default',
     }),
-    persist: 'dsh.workspace.view.v5',
+    ...embedded ? {} : { persist: 'dsh.workspace.view.v5' },
     actions: {
       setGroupBy: (d, mode: SessionGroupBy) => { d.groupBy = mode },
       setOrderBy: (d, mode: SessionOrderBy, initialOrders) => {
